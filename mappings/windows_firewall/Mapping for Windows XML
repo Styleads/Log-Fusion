@@ -1,0 +1,186 @@
+# Mapping config: Microsoft Windows Security Event Log XML
+# Example: Windows Security Event ID 5379
+# Event 5379 = Credential Manager credentials were read
+
+source_identity:
+  vendor: "Microsoft"
+  product: "Windows Security Event Log"
+  format: "xml"
+  version: "1.0"
+
+# ---- detection: recognize Windows Event Log XML ----
+detection:
+  method: "regex"
+  pattern: '^<Event xmlns="http://schemas\.microsoft\.com/win/2004/08/events/event">'
+
+# ---- parsing: XML Event structure ----
+parsing:
+  format: "xml"
+  root: "Event"
+
+  system:
+    Provider:
+      name_attribute: "Name"
+      target: "raw_provider_name"
+      guid_attribute: "Guid"
+      guid_target: "raw_provider_guid"
+
+    EventID:
+      target: "raw_event_id"
+
+    Version:
+      target: "raw_version"
+
+    Level:
+      target: "raw_level"
+
+    Task:
+      target: "raw_task"
+
+    Opcode:
+      target: "raw_opcode"
+
+    Keywords:
+      target: "raw_keywords"
+
+    TimeCreated:
+      SystemTime:
+        target: "raw_timestamp"
+
+    EventRecordID:
+      target: "raw_event_record_id"
+
+    Correlation:
+      ActivityID:
+        target: "raw_activity_id"
+
+    Execution:
+      ProcessID:
+        target: "raw_process_id"
+      ThreadID:
+        target: "raw_thread_id"
+
+    Channel:
+      target: "raw_channel"
+
+    Computer:
+      target: "raw_computer"
+
+  event_data:
+    extraction:
+      selector: "Event.EventData.Data"
+      key_attribute: "Name"
+      value: "text"
+      target: "event_data"
+
+# ---- classification ----
+classification:
+  default_class_name: "Windows Security Activity"
+
+  rules:
+    - when:
+        raw_event_id: "5379"
+      class_name: "Credential Access"
+      activity_name: "Credential Manager Credential Read"
+
+# ---- field_map: parsed XML field -> normalized path ----
+field_map:
+
+  # Event metadata
+  raw_provider_name:
+    "metadata.product.name"
+
+  raw_event_id:
+    "metadata.event_code"
+
+  raw_computer:
+    "device.hostname"
+
+  raw_channel:
+    "metadata.log_source"
+
+  raw_event_record_id:
+    "metadata.event_record_id"
+
+  raw_provider_guid:
+    "metadata.product.uid"
+
+  # User / subject information
+  event_data.SubjectUserSid:
+    "actor.user.uid"
+
+  event_data.SubjectUserName:
+    "actor.user.name"
+
+  event_data.SubjectDomainName:
+    "actor.user.domain"
+
+  event_data.SubjectLogonId:
+    "actor.session.uid"
+
+  # Credential target
+  event_data.TargetName:
+    "credential.target"
+
+  event_data.Type:
+    "credential.type"
+
+  event_data.CountOfCredentialsReturned:
+    "credential.count"
+
+  event_data.ReadOperation:
+    "credential.read_operation"
+
+  event_data.ReturnCode:
+    "credential.return_code"
+
+  # Process information
+  event_data.ClientProcessId:
+    "process.pid"
+
+  event_data.ProcessCreationTime:
+    "process.creation_time"
+
+# ---- static_fields: constants for this source ----
+static_fields:
+  "device.vendor_name": "Microsoft"
+  "device.type": "Windows Host"
+  "metadata.product.vendor_name": "Microsoft"
+  "metadata.product.name": "Windows Security Event Log"
+  "metadata.log_type": "Security"
+
+# ---- transforms ----
+transforms:
+
+  raw_event_id:
+    type: "string"
+
+  event_data.CountOfCredentialsReturned:
+    type: "integer"
+
+  event_data.Type:
+    type: "integer"
+
+  event_data.ClientProcessId:
+    type: "integer"
+
+  event_data.ReturnCode:
+    type: "integer"
+
+# ---- timestamp ----
+timestamp:
+  source_field: "raw_timestamp"
+  format: "%Y-%m-%dT%H:%M:%S.%fZ"
+  timezone: "UTC"
+
+# ---- unmapped policy ----
+# Any EventData.Data element not explicitly mapped above
+# is retained rather than discarded.
+unmapped_policy:
+  action: "bucket"
+  target: "unmapped"
+
+# ---- raw preservation ----
+raw_preservation:
+  enabled: true
+  target_field: "raw_data"

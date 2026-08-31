@@ -1,0 +1,251 @@
+# Mapping config: Cisco ASA Syslog -> OCSF
+# Source: Cisco Adaptive Security Appliance (ASA)
+# Log format: Syslog
+#
+# Supported ASA events:
+#   302013 - Built outbound TCP connection
+#   106023 - Denied TCP connection
+#   305011 - Built dynamic TCP translation
+#   302014 - TCP connection teardown
+#
+# Target OCSF class:
+#   Network Activity
+
+source_identity:
+  vendor: "Cisco"
+  product: "Adaptive Security Appliance"
+  format: "syslog"
+  version: "1.0"
+
+# ------------------------------------------------------------
+# Detection
+# ------------------------------------------------------------
+detection:
+  method: "regex"
+  pattern: '^(?:[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+)?\d{2}:\d{2}:\d{2}:\s+%ASA-\d+-\d{6}:'
+
+# ------------------------------------------------------------
+# Parsing
+# ------------------------------------------------------------
+parsing:
+  format: "syslog"
+
+  header:
+    timestamp:
+      target: "raw_timestamp"
+
+    severity:
+      target: "raw_severity"
+
+    message_id:
+      target: "raw_message_id"
+
+  message:
+    target: "raw_message"
+
+# ------------------------------------------------------------
+# Event-specific parsing
+# ------------------------------------------------------------
+message_parsing:
+
+  # ASA 302013
+  # Built outbound TCP connection
+  - when:
+      raw_message_id: "302013"
+
+    pattern: 'Built (?<direction>\w+) TCP connection (?<connection_id>\d+) for (?<dst_zone>\w+):(?<dst_ip>[^/]+)/(?<dst_port>\d+) \((?<nat_dst_ip>[^/]+)/(?<nat_dst_port>\d+)\) to (?<src_zone>\w+):(?<src_ip>[^/]+)/(?<src_port>\d+) \((?<nat_src_ip>[^/]+)/(?<nat_src_port>\d+)\)'
+
+  # ASA 106023
+  # Denied TCP connection
+  - when:
+      raw_message_id: "106023"
+
+    pattern: 'Deny (?<protocol>\w+) src (?<src_zone>\w+):(?<src_ip>[^/]+)/(?<src_port>\d+) dst (?<dst_zone>\w+):(?<dst_ip>[^/]+)/(?<dst_port>\d+) by access-group "(?<access_group>[^"]+)"'
+
+  # ASA 305011
+  # Dynamic NAT translation
+  - when:
+      raw_message_id: "305011"
+
+    pattern: 'Built dynamic (?<protocol>\w+) translation from (?<src_zone>\w+):(?<src_ip>[^/]+)/(?<src_port>\d+) to (?<dst_zone>\w+):(?<dst_ip>[^/]+)/(?<dst_port>\d+)'
+
+  # ASA 302014
+  # TCP connection teardown
+  - when:
+      raw_message_id: "302014"
+
+    pattern: 'Teardown (?<protocol>\w+) connection (?<connection_id>\d+) for (?<dst_zone>\w+):(?<dst_ip>[^/]+)/(?<dst_port>\d+) to (?<src_zone>\w+):(?<src_ip>[^/]+)/(?<src_port>\d+) duration (?<duration>[\d:]+) bytes (?<bytes>\d+) (?<end_reason>.+)'
+
+# ------------------------------------------------------------
+# OCSF Classification
+# ------------------------------------------------------------
+classification:
+
+  default_class_uid: 4001
+  default_class_name: "Network Activity"
+
+  rules:
+
+    - when:
+        raw_message_id: "302013"
+      class_uid: 4001
+      class_name: "Network Activity"
+      activity_id: 1
+      activity_name: "Open"
+
+    - when:
+        raw_message_id: "106023"
+      class_uid: 4001
+      class_name: "Network Activity"
+      activity_id: 6
+      activity_name: "Refuse"
+
+    - when:
+        raw_message_id: "305011"
+      class_uid: 4001
+      class_name: "Network Activity"
+      activity_id: 1
+      activity_name: "Open"
+
+    - when:
+        raw_message_id: "302014"
+      class_uid: 4001
+      class_name: "Network Activity"
+      activity_id: 2
+      activity_name: "Close"
+
+# ------------------------------------------------------------
+# OCSF Field Mapping
+# ------------------------------------------------------------
+field_map:
+
+  # ---- Network endpoints ----
+
+  src_ip:
+    "src_endpoint.ip"
+
+  src_port:
+    "src_endpoint.port"
+
+  src_zone:
+    "src_endpoint.zone"
+
+  dst_ip:
+    "dst_endpoint.ip"
+
+  dst_port:
+    "dst_endpoint.port"
+
+  dst_zone:
+    "dst_endpoint.zone"
+
+  # ---- Protocol ----
+
+  protocol:
+    "connection_info.protocol_name"
+
+  # ---- Connection ----
+
+  connection_id:
+    "connection_info.uid"
+
+  duration:
+    "connection_info.duration"
+
+  end_reason:
+    "connection_info.end_reason"
+
+  direction:
+    "connection_info.direction"
+
+  # ---- NAT ----
+
+  nat_src_ip:
+    "src_endpoint.ip"
+
+  nat_src_port:
+    "src_endpoint.port"
+
+  nat_dst_ip:
+    "dst_endpoint.ip"
+
+  nat_dst_port:
+    "dst_endpoint.port"
+
+  # ---- Traffic ----
+
+  bytes:
+    "traffic.bytes"
+
+  # ---- Policy ----
+
+  access_group:
+    "policy.name"
+
+# ------------------------------------------------------------
+# Static OCSF fields
+# ------------------------------------------------------------
+static_fields:
+
+  "device.vendor_name": "Cisco"
+  "device.type": "Firewall"
+
+  "metadata.product.vendor_name": "Cisco"
+  "metadata.product.name": "Adaptive Security Appliance"
+
+# ------------------------------------------------------------
+# Transforms
+# ------------------------------------------------------------
+transforms:
+
+  raw_severity:
+    type: "integer"
+
+  raw_message_id:
+    type: "integer"
+
+  src_port:
+    type: "integer"
+
+  dst_port:
+    type: "integer"
+
+  nat_src_port:
+    type: "integer"
+
+  nat_dst_port:
+    type: "integer"
+
+  connection_id:
+    type: "integer"
+
+  bytes:
+    type: "integer"
+
+  duration:
+    type: "duration"
+
+  protocol:
+    type: "passthrough_upper"
+
+# ------------------------------------------------------------
+# Timestamp
+# ------------------------------------------------------------
+timestamp:
+  source_field: "raw_timestamp"
+  format: "%b %d %Y %H:%M:%S"
+  timezone: "local"
+
+# ------------------------------------------------------------
+# Unmapped fields
+# ------------------------------------------------------------
+unmapped_policy:
+  action: "bucket"
+  target: "unmapped"
+
+# ------------------------------------------------------------
+# Raw preservation
+# ------------------------------------------------------------
+raw_preservation:
+  enabled: true
+  target_field: "raw_data"

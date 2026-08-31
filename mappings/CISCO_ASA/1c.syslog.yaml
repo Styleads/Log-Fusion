@@ -1,0 +1,45 @@
+event:
+  metadata:
+    event_type: "305011"
+    severity: 5
+    facility: "ASA"
+    message_id: "305011"
+
+  device:
+    vendor_name: "Cisco"
+    type: "Firewall"
+    product:
+      name: "Adaptive Security Appliance"
+
+  src_endpoint:
+    ip: "192.168.1.142"
+    port: 61043
+    zone: "inside"
+
+  dst_endpoint:
+    zone: "outside"
+
+  connection_info:
+    protocol_name: "TCP"
+
+  nat:
+    type: "dynamic"
+    original:
+      ip: "192.168.1.142"
+      port: 61043
+      zone: "inside"
+    translated:
+      ip: "203.0.113.10"
+      port: 16043
+      zone: "outside"
+
+  activity:
+    action: "translate"
+
+  classification:
+    class_name: "Network Activity"
+    activity_name: "Dynamic NAT Translation"
+
+  timestamp: "2026-08-31T15:45:30"
+
+  raw_data: "Aug 31 2026 15:45:30: %ASA-5-305011: Built dynamic TCP translation from inside:192.168.1.142/61043 to outside:203.0.113.10/16043"

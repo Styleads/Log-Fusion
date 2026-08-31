@@ -1,0 +1,52 @@
+event:
+  metadata:
+    product:
+      vendor_name: "Microsoft"
+      name: "Windows Security Auditing"
+      uid: "{54849625-5478-4994-a5ba-3e3b0328c30d}"
+
+    event_code: 4672
+    version: 0
+    log_source: "Security"
+    event_record_id: 2515981
+
+  device:
+    vendor_name: "Microsoft"
+    type: "Windows Host"
+    hostname: "UTTAM"
+
+  actor:
+    user:
+      uid: "S-1-5-21-2722346-3682632666-3267804783-1001"
+      name: "vigilanceranchi@gmail.com"
+      domain: "MicrosoftAccount"
+
+    session:
+      uid: "0xdef1b3"
+
+    privileges:
+      - "SeSecurityPrivilege"
+      - "SeTakeOwnershipPrivilege"
+      - "SeLoadDriverPrivilege"
+      - "SeBackupPrivilege"
+      - "SeRestorePrivilege"
+      - "SeDebugPrivilege"
+      - "SeSystemEnvironmentPrivilege"
+      - "SeImpersonatePrivilege"
+      - "SeDelegateSessionUserImpersonatePrivilege"
+
+  timestamp: "2026-08-31T09:18:07.1001094Z"
+
+  classification:
+    class_name: "Account Activity"
+    activity_name: "Special Privileges Assigned"
+
+  unmapped:
+    Level: 0
+    Task: 12548
+    Opcode: 0
+    Keywords: "0x8020000000000000"
+    ProcessID: 1340
+    ThreadID: 12816
+
+  raw_data: "<original XML event>"

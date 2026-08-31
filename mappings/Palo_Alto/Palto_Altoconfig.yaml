@@ -1,0 +1,319 @@
+# Mapping config: Palo Alto Networks Traffic Log
+# Format: CSV / comma-delimited
+# Log type: TRAFFIC
+# Based on Palo Alto Networks Traffic Log field ordering
+
+source_identity:
+  vendor: "Palo Alto Networks"
+  product: "PAN-OS"
+  format: "csv"
+  version: "1.0"
+
+# ---- detection: recognize Palo Alto Traffic Log ----
+detection:
+  method: "csv_header_and_field"
+  conditions:
+    - header_field: "Type"
+      equals: "TRAFFIC"
+
+    - header_field: "Source IP"
+      exists: true
+
+    - header_field: "Destination IP"
+      exists: true
+
+# ---- parsing ----
+parsing:
+  format: "csv"
+  delimiter: ","
+  quote_character: '"'
+  header: true
+
+  fields:
+    "FUTURE_USE": raw_future_use_1
+    "Receive Time": raw_receive_time
+    "Serial Number": raw_serial_number
+    "Type": raw_type
+    "Subtype": raw_subtype
+    "Version": raw_version
+    "Generate Time": raw_generate_time
+    "Source IP": raw_src_ip
+    "Destination IP": raw_dst_ip
+    "NAT Source IP": raw_nat_src_ip
+    "NAT Destination IP": raw_nat_dst_ip
+    "Rule Name": raw_rule_name
+    "Source User": raw_src_user
+    "Destination User": raw_dst_user
+    "Application": raw_application
+    "Virtual System": raw_virtual_system
+    "Source Zone": raw_src_zone
+    "Destination Zone": raw_dst_zone
+    "Inbound Interface": raw_inbound_interface
+    "Outbound Interface": raw_outbound_interface
+    "Log Action": raw_log_action
+    "Session ID": raw_session_id
+    "Repeat Count": raw_repeat_count
+    "Source Port": raw_src_port
+    "Destination Port": raw_dst_port
+    "NAT Source Port": raw_nat_src_port
+    "NAT Destination Port": raw_nat_dst_port
+    "Flags": raw_flags
+    "Protocol": raw_protocol
+    "Action": raw_action
+    "Bytes": raw_bytes
+    "Bytes Sent": raw_bytes_sent
+    "Bytes Received": raw_bytes_received
+    "Packets": raw_packets
+    "Start Time": raw_start_time
+    "Elapsed Time": raw_elapsed_time
+    "Category": raw_category
+    "Sequence Number": raw_sequence_number
+    "Action Flags": raw_action_flags
+    "Source Country": raw_src_country
+    "Destination Country": raw_dst_country
+    "Packets Sent": raw_packets_sent
+    "Packets Received": raw_packets_received
+    "Session End Reason": raw_session_end_reason
+
+# ---- classification ----
+classification:
+  default_class_name: "Network Activity"
+
+  rules:
+
+    - when:
+        raw_type: "TRAFFIC"
+        raw_action: "allow"
+      class_name: "Network Activity"
+      activity_name: "Allow"
+
+    - when:
+        raw_type: "TRAFFIC"
+        raw_action: "deny"
+      class_name: "Network Activity"
+      activity_name: "Deny"
+
+    - when:
+        raw_type: "TRAFFIC"
+        raw_action: "drop"
+      class_name: "Network Activity"
+      activity_name: "Drop"
+
+    - when:
+        raw_type: "TRAFFIC"
+        raw_action: "reset-client"
+      class_name: "Network Activity"
+      activity_name: "Reset"
+
+    - when:
+        raw_type: "TRAFFIC"
+        raw_action: "reset-server"
+      class_name: "Network Activity"
+      activity_name: "Reset"
+
+# ---- field_map: parsed field -> normalized path ----
+field_map:
+
+  # Source endpoint
+  raw_src_ip:
+    "src_endpoint.ip"
+
+  raw_src_port:
+    "src_endpoint.port"
+
+  raw_src_user:
+    "src_endpoint.user.name"
+
+  raw_src_zone:
+    "src_endpoint.zone"
+
+  raw_inbound_interface:
+    "src_endpoint.interface"
+
+  raw_src_country:
+    "src_endpoint.location.country"
+
+  # Destination endpoint
+  raw_dst_ip:
+    "dst_endpoint.ip"
+
+  raw_dst_port:
+    "dst_endpoint.port"
+
+  raw_dst_user:
+    "dst_endpoint.user.name"
+
+  raw_dst_zone:
+    "dst_endpoint.zone"
+
+  raw_outbound_interface:
+    "dst_endpoint.interface"
+
+  raw_dst_country:
+    "dst_endpoint.location.country"
+
+  # NAT
+  raw_nat_src_ip:
+    "src_endpoint.nat.ip"
+
+  raw_nat_src_port:
+    "src_endpoint.nat.port"
+
+  raw_nat_dst_ip:
+    "dst_endpoint.nat.ip"
+
+  raw_nat_dst_port:
+    "dst_endpoint.nat.port"
+
+  # Network connection
+  raw_protocol:
+    "connection_info.protocol_name"
+
+  raw_session_id:
+    "connection_info.uid"
+
+  raw_start_time:
+    "connection_info.start_time"
+
+  raw_elapsed_time:
+    "connection_info.duration"
+
+  raw_session_end_reason:
+    "connection_info.end_reason"
+
+  # Application / policy
+  raw_application:
+    "application.name"
+
+  raw_rule_name:
+    "policy.name"
+
+  raw_category:
+    "traffic.category"
+
+  raw_action:
+    "activity.action"
+
+  raw_log_action:
+    "log.action"
+
+  # Traffic statistics
+  raw_bytes:
+    "traffic.bytes"
+
+  raw_bytes_sent:
+    "traffic.bytes_sent"
+
+  raw_bytes_received:
+    "traffic.bytes_received"
+
+  raw_packets:
+    "traffic.packets"
+
+  raw_packets_sent:
+    "traffic.packets_sent"
+
+  raw_packets_received:
+    "traffic.packets_received"
+
+  # Firewall / PAN-OS metadata
+  raw_serial_number:
+    "device.serial_number"
+
+  raw_virtual_system:
+    "device.virtual_system"
+
+  raw_flags:
+    "connection_info.flags"
+
+  raw_action_flags:
+    "activity.action_flags"
+
+  raw_sequence_number:
+    "metadata.sequence_number"
+
+  raw_repeat_count:
+    "metadata.repeat_count"
+
+  raw_subtype:
+    "metadata.subtype"
+
+  raw_version:
+    "metadata.version"
+
+  raw_type:
+    "metadata.event_type"
+
+# ---- static_fields ----
+static_fields:
+  "device.vendor_name": "Palo Alto Networks"
+  "device.type": "Next-Generation Firewall"
+  "metadata.product.vendor_name": "Palo Alto Networks"
+  "metadata.product.name": "PAN-OS"
+  "metadata.log_type": "Traffic"
+
+# ---- transforms ----
+transforms:
+
+  raw_src_port:
+    type: "integer"
+
+  raw_dst_port:
+    type: "integer"
+
+  raw_nat_src_port:
+    type: "integer"
+
+  raw_nat_dst_port:
+    type: "integer"
+
+  raw_session_id:
+    type: "integer"
+
+  raw_repeat_count:
+    type: "integer"
+
+  raw_bytes:
+    type: "integer"
+
+  raw_bytes_sent:
+    type: "integer"
+
+  raw_bytes_received:
+    type: "integer"
+
+  raw_packets:
+    type: "integer"
+
+  raw_packets_sent:
+    type: "integer"
+
+  raw_packets_received:
+    type: "integer"
+
+  raw_elapsed_time:
+    type: "integer"
+
+  raw_sequence_number:
+    type: "integer"
+
+  raw_protocol:
+    type: "passthrough_lower"
+
+# ---- timestamp ----
+timestamp:
+  source_field: "raw_generate_time"
+  format: "%Y/%m/%d %H:%M:%S"
+  timezone: "local"
+
+# ---- unmapped policy ----
+# Future-use columns and any fields without an OCSF home
+# are retained instead of being discarded.
+unmapped_policy:
+  action: "bucket"
+  target: "unmapped"
+
+# ---- raw preservation ----
+raw_preservation:
+  enabled: true
+  target_field: "raw_data"

@@ -1,0 +1,212 @@
+# Mapping config: Suricata EVE JSON - Alert
+# Handles Suricata event_type = alert
+# Optional protocol-specific fields such as HTTP are mapped when present.
+
+source_identity:
+  vendor: "OISF"
+  product: "Suricata"
+  format: "json"
+  version: "EVE JSON"
+
+# ---- detection: recognize Suricata EVE alert events ----
+detection:
+  method: "json_match"
+  conditions:
+    - path: "event_type"
+      equals: "alert"
+
+# ---- parsing ----
+parsing:
+  format: "json"
+
+  fields:
+    timestamp: raw_timestamp
+    flow_id: raw_flow_id
+    in_iface: raw_interface
+    event_type: raw_event_type
+
+    src_ip: raw_src_ip
+    src_port: raw_src_port
+    dest_ip: raw_dst_ip
+    dest_port: raw_dst_port
+    proto: raw_protocol
+
+    alert.action: raw_alert_action
+    alert.gid: raw_alert_gid
+    alert.signature_id: raw_signature_id
+    alert.rev: raw_alert_revision
+    alert.signature: raw_signature
+    alert.category: raw_alert_category
+    alert.severity: raw_alert_severity
+
+    flow.pkts_toserver: raw_pkts_to_server
+    flow.pkts_toclient: raw_pkts_to_client
+    flow.bytes_toserver: raw_bytes_to_server
+    flow.bytes_toclient: raw_bytes_to_client
+    flow.start: raw_flow_start
+
+    # Optional HTTP fields
+    http.hostname: raw_http_hostname
+    http.url: raw_http_url
+    http.http_user_agent: raw_http_user_agent
+    http.http_method: raw_http_method
+
+# ---- classification ----
+classification:
+  default_class_name: "Network Detection"
+
+  rules:
+
+    - when:
+        raw_event_type: "alert"
+        raw_alert_action: "allowed"
+      class_name: "Network Detection"
+      activity_name: "Alert Allowed"
+
+    - when:
+        raw_event_type: "alert"
+        raw_alert_action: "blocked"
+      class_name: "Network Detection"
+      activity_name: "Alert Blocked"
+
+# ---- field_map: parsed field -> normalized path ----
+field_map:
+
+  # Network endpoints
+  raw_src_ip:
+    "src_endpoint.ip"
+
+  raw_src_port:
+    "src_endpoint.port"
+
+  raw_dst_ip:
+    "dst_endpoint.ip"
+
+  raw_dst_port:
+    "dst_endpoint.port"
+
+  raw_protocol:
+    "connection_info.protocol_name"
+
+  # Network interface
+  raw_interface:
+    "src_endpoint.interface"
+
+  # Flow
+  raw_flow_id:
+    "connection_info.uid"
+
+  raw_pkts_to_server:
+    "traffic.packets_to_server"
+
+  raw_pkts_to_client:
+    "traffic.packets_to_client"
+
+  raw_bytes_to_server:
+    "traffic.bytes_to_server"
+
+  raw_bytes_to_client:
+    "traffic.bytes_to_client"
+
+  raw_flow_start:
+    "connection_info.start_time"
+
+  # Suricata detection / signature
+  raw_alert_action:
+    "detection.action"
+
+  raw_alert_gid:
+    "detection.generator_id"
+
+  raw_signature_id:
+    "detection.signature_id"
+
+  raw_alert_revision:
+    "detection.signature_revision"
+
+  raw_signature:
+    "detection.signature"
+
+  raw_alert_category:
+    "detection.category"
+
+  raw_alert_severity:
+    "detection.severity"
+
+  # HTTP
+  raw_http_hostname:
+    "http.hostname"
+
+  raw_http_url:
+    "http.url"
+
+  raw_http_user_agent:
+    "http.user_agent"
+
+  raw_http_method:
+    "http.method"
+
+# ---- static_fields ----
+static_fields:
+  "device.vendor_name": "OISF"
+  "device.type": "Network Intrusion Detection System"
+  "metadata.product.vendor_name": "OISF"
+  "metadata.product.name": "Suricata"
+  "metadata.log_type": "EVE JSON"
+  "metadata.event_type": "alert"
+
+# ---- transforms ----
+transforms:
+
+  raw_src_port:
+    type: "integer"
+
+  raw_dst_port:
+    type: "integer"
+
+  raw_flow_id:
+    type: "integer"
+
+  raw_alert_gid:
+    type: "integer"
+
+  raw_signature_id:
+    type: "integer"
+
+  raw_alert_revision:
+    type: "integer"
+
+  raw_alert_severity:
+    type: "integer"
+
+  raw_pkts_to_server:
+    type: "integer"
+
+  raw_pkts_to_client:
+    type: "integer"
+
+  raw_bytes_to_server:
+    type: "integer"
+
+  raw_bytes_to_client:
+    type: "integer"
+
+  raw_protocol:
+    type: "passthrough_upper"
+
+# ---- timestamp ----
+timestamp:
+  source_field: "raw_timestamp"
+  format: "%Y-%m-%dT%H:%M:%S.%f%z"
+  timezone: "UTC"
+
+# ---- unmapped policy ----
+# Preserve any Suricata fields not explicitly mapped above.
+unmapped_policy:
+  action: "bucket"
+  target: "unmapped"
+
+# ---- raw preservation ----
+raw_preservation:
+  enabled: true
+  target_field: "raw_data"

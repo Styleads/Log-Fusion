@@ -1,0 +1,31 @@
+- <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+- <System>
+  <Provider Name="Microsoft-Windows-DistributedCOM" Guid="{1B562E86-B7AA-4131-BADC-B6F3A001407E}" EventSourceName="DCOM" /> 
+  <EventID Qualifiers="0">10016</EventID> 
+  <Version>0</Version> 
+  <Level>3</Level> 
+  <Task>0</Task> 
+  <Opcode>0</Opcode> 
+  <Keywords>0x8080000000000000</Keywords> 
+  <TimeCreated SystemTime="2026-08-31T09:45:59.7892162Z" /> 
+  <EventRecordID>104084</EventRecordID> 
+  <Correlation ActivityID="{576cccc7-391e-0001-2213-7a571e39dd01}" /> 
+  <Execution ProcessID="1652" ThreadID="2776" /> 
+  <Channel>System</Channel> 
+  <Computer>UTTAM</Computer> 
+  <Security UserID="S-1-5-21-2722346-3682632666-3267804783-1001" /> 
+  </System>
+- <EventData>
+  <Data Name="param1">application-specific</Data> 
+  <Data Name="param2">Local</Data> 
+  <Data Name="param3">Activation</Data> 
+  <Data Name="param4">{2593F8B9-4EAF-457C-B68A-50F6B8EA6B54}</Data> 
+  <Data Name="param5">{15C20B67-12E7-4BB6-92BB-7AFF07997402}</Data> 
+  <Data Name="param6">UTTAM</Data> 
+  <Data Name="param7">vigil</Data> 
+  <Data Name="param8">S-1-5-21-2722346-3682632666-3267804783-1001</Data> 
+  <Data Name="param9">LocalHost (Using LRPC)</Data> 
+  <Data Name="param10">OpenAI.Codex_26.825.6671.0_x64__2p2nqsd0c76g0</Data> 
+  <Data Name="param11">Unavailable</Data> 
+  </EventData>
+  </Event>

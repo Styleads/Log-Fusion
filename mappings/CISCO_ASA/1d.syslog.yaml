@@ -1,0 +1,42 @@
+event:
+  metadata:
+    event_type: "302014"
+    severity: 6
+    facility: "ASA"
+    message_id: "302014"
+
+  device:
+    vendor_name: "Cisco"
+    type: "Firewall"
+    product:
+      name: "Adaptive Security Appliance"
+
+  connection_info:
+    uid: 104521
+    protocol_name: "TCP"
+    duration: 44
+    end_reason: "TCP FIN-ACK"
+
+  src_endpoint:
+    ip: "192.168.1.105"
+    port: 51220
+    zone: "inside"
+
+  dst_endpoint:
+    ip: "142.250.190.46"
+    port: 443
+    zone: "outside"
+
+  traffic:
+    bytes: 5420
+
+  activity:
+    action: "teardown"
+
+  classification:
+    class_name: "Network Activity"
+    activity_name: "Connection Teardown"
+
+  timestamp: "2026-08-31T15:45:45"
+
+  raw_data: "Aug 31 2026 15:45:45: %ASA-6-302014: Teardown TCP connection 104521 for outside:142.250.190.46/443 to inside:192.168.1.105/51220 duration 0:00:44 bytes 5420 TCP FIN-ACK"

@@ -1,0 +1,91 @@
+# Mapping config: Microsoft Windows Firewall (pfirewall.log)
+# Format reference: space-delimited, fields declared in the "#Fields:" header line.
+# Field order (index 0-based, after splitting on whitespace):
+#   0 date | 1 time | 2 action | 3 protocol | 4 src-ip | 5 dst-ip | 6 src-port
+#   7 dst-port | 8 size | 9 tcpflags | 10 tcpsyn | 11 tcpack | 12 tcpwin
+#   13 icmptype | 14 icmpcode | 15 info | 16 path
+
+source_identity:
+  vendor: "Microsoft"
+  product: "Windows Firewall"
+  format: "space_delimited"
+  version: "1.5"
+
+# ---- detection: how the engine recognizes this format among all onboarded configs ----
+detection:
+  method: "regex"
+  pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (DROP|ALLOW) (TCP|UDP|ICMP)'
+
+# ---- parsing: split each line on whitespace, comment/header lines (starting with #) are skipped ----
+parsing:
+  delimiter: " "
+  skip_line_prefix: "#"
+  fields:
+    0: raw_date
+    1: raw_time
+    2: raw_action
+    3: raw_protocol
+    4: raw_src_ip
+    5: raw_dst_ip
+    6: raw_src_port
+    7: raw_dst_port
+    8: raw_size
+    15: raw_info
+    16: raw_direction        # RECEIVE = inbound, SEND = outbound
+
+# ---- classification: assign OCSF class_uid / activity based on parsed action ----
+classification:
+  default_class_uid: 4001
+  default_class_name: "Network Activity"
+  rules:
+    - when: { raw_action: "DROP" }
+      class_uid: 4001
+      activity_id: 6
+      activity_name: "Deny"
+    - when: { raw_action: "ALLOW" }
+      class_uid: 4001
+      activity_id: 1
+      activity_name: "Allow"
+
+# ---- field_map: parsed raw field -> dotted OCSF path ----
+field_map:
+  raw_src_ip:      "src_endpoint.ip"
+  raw_src_port:    "src_endpoint.port"
+  raw_dst_ip:      "dst_endpoint.ip"
+  raw_dst_port:    "dst_endpoint.port"
+  raw_protocol:    "connection_info.protocol_name"
+  raw_size:        "traffic.bytes"
+
+# ---- static_fields: constants this vendor always contributes ----
+static_fields:
+  "device.vendor_name": "Microsoft"
+  "device.type": "Host Firewall"
+  "metadata.product.vendor_name": "Microsoft"
+  "metadata.product.name": "Windows Firewall"
+
+# ---- transforms: light value conversions applied during mapping ----
+transforms:
+  raw_direction:
+    type: "lookup"
+    table: { "RECEIVE": "Inbound", "SEND": "Outbound" }
+    target: "connection_info.direction"
+  raw_protocol:
+    type: "passthrough_upper"   # values already TCP/UDP/ICMP, no lookup needed
+
+# ---- timestamp: how to build event time from parsed fields ----
+timestamp:
+  source_field: "raw_date+raw_time"   # engine concatenates the two columns
+  format: "%Y-%m-%d %H:%M:%S"
+  timezone: "local"                    # Windows Firewall logs in local system time
+
+# ---- unmapped_policy: never drop fields with no schema home yet ----
+unmapped_policy:
+  action: "bucket"
+  target: "unmapped"
+  # e.g. tcpflags, tcpsyn, tcpack, tcpwin, icmptype, icmpcode, raw_info
+  # all land in `unmapped` automatically since they have no field_map entry
+
+# ---- raw_preservation: always keep the untouched original line ----
+raw_preservation:
+  enabled: true
+  target_field: "raw_data"

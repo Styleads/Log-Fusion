@@ -1,0 +1,53 @@
+event:
+  metadata:
+    product:
+      vendor_name: "Microsoft"
+      name: "Windows DistributedCOM"
+      uid: "{1B562E86-B7AA-4131-BADC-B6F3A001407E}"
+
+    source_name: "DCOM"
+    event_code: 10016
+    qualifiers: 0
+    version: 0
+    level: 3
+    task: 0
+    opcode: 0
+    keywords: "0x8080000000000000"
+    log_source: "System"
+    event_record_id: 104084
+    activity_id: "{576cccc7-391e-0001-2213-7a571e39dd01}"
+
+  device:
+    vendor_name: "Microsoft"
+    type: "Windows Host"
+    hostname: "UTTAM"
+
+  actor:
+    user:
+      uid: "S-1-5-21-2722346-3682632666-3267804783-1001"
+
+  dcom:
+    application_type: "application-specific"
+    scope: "Local"
+    operation: "Activation"
+
+    class_id: "{2593F8B9-4EAF-457C-B68A-50F6B8EA6B54}"
+    app_id: "{15C20B67-12E7-4BB6-92BB-7AFF07997402}"
+
+    computer: "UTTAM"
+
+    user:
+      name: "vigil"
+      sid: "S-1-5-21-2722346-3682632666-3267804783-1001"
+
+    protocol: "LocalHost (Using LRPC)"
+    application: "OpenAI.Codex_26.825.6671.0_x64__2p2nqsd0c76g0"
+    result: "Unavailable"
+
+  timestamp: "2026-08-31T09:45:59.7892162Z"
+
+  classification:
+    class_name: "System Activity"
+    activity_name: "DCOM Activation Permission Event"
+
+  raw_data: "<original XML event>"

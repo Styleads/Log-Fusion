@@ -1,15 +1,6 @@
-# Mapping config: Cisco ASA Syslog -> OCSF
-# Source: Cisco Adaptive Security Appliance (ASA)
-# Log format: Syslog
-#
-# Supported ASA events:
-#   302013 - Built outbound TCP connection
-#   106023 - Denied TCP connection
-#   305011 - Built dynamic TCP translation
-#   302014 - TCP connection teardown
-#
-# Target OCSF class:
-#   Network Activity
+# Mapping config: Cisco Adaptive Security Appliance (ASA)
+# Format: Syslog
+# Purpose: Generic Cisco ASA -> OCSF normalization
 
 source_identity:
   vendor: "Cisco"
@@ -17,68 +8,122 @@ source_identity:
   format: "syslog"
   version: "1.0"
 
-# ------------------------------------------------------------
-# Detection
-# ------------------------------------------------------------
+# ---- detection ----
+# Recognizes Cisco ASA Syslog messages by their standard
+# facility/severity/message-id structure.
 detection:
   method: "regex"
-  pattern: '^(?:[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+)?\d{2}:\d{2}:\d{2}:\s+%ASA-\d+-\d{6}:'
+  pattern: '^%ASA-\d+-\d{6}:'
 
-# ------------------------------------------------------------
-# Parsing
-# ------------------------------------------------------------
+# ---- parsing ----
 parsing:
   format: "syslog"
 
   header:
-    timestamp:
-      target: "raw_timestamp"
+    pattern: '^(?<timestamp>[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}):\s+%ASA-(?<severity>\d+)-(?<message_id>\d+):'
 
-    severity:
-      target: "raw_severity"
+    fields:
+      timestamp: raw_timestamp
+      severity: raw_severity
+      message_id: raw_message_id
 
-    message_id:
-      target: "raw_message_id"
+  body:
+    target: raw_message
 
-  message:
-    target: "raw_message"
+# ---- message families ----
+# Cisco ASA has many message IDs, so parsing is organized
+# by message family rather than by individual sample records.
 
-# ------------------------------------------------------------
-# Event-specific parsing
-# ------------------------------------------------------------
-message_parsing:
+message_families:
 
-  # ASA 302013
-  # Built outbound TCP connection
-  - when:
-      raw_message_id: "302013"
+  connection:
+    message_ids:
+      - "302013"
+      - "302014"
+      - "302015"
+      - "302016"
+      - "302017"
 
-    pattern: 'Built (?<direction>\w+) TCP connection (?<connection_id>\d+) for (?<dst_zone>\w+):(?<dst_ip>[^/]+)/(?<dst_port>\d+) \((?<nat_dst_ip>[^/]+)/(?<nat_dst_port>\d+)\) to (?<src_zone>\w+):(?<src_ip>[^/]+)/(?<src_port>\d+) \((?<nat_src_ip>[^/]+)/(?<nat_src_port>\d+)\)'
+    fields:
+      protocol: raw_protocol
+      connection_id: raw_connection_id
+      src_ip: raw_src_ip
+      src_port: raw_src_port
+      src_zone: raw_src_zone
+      dst_ip: raw_dst_ip
+      dst_port: raw_dst_port
+      dst_zone: raw_dst_zone
+      duration: raw_duration
+      bytes: raw_bytes
+      end_reason: raw_end_reason
 
-  # ASA 106023
-  # Denied TCP connection
-  - when:
-      raw_message_id: "106023"
+  access_control:
+    message_ids:
+      - "106001"
+      - "106002"
+      - "106003"
+      - "106006"
+      - "106007"
+      - "106014"
+      - "106015"
+      - "106016"
+      - "106017"
+      - "106018"
+      - "106019"
+      - "106020"
+      - "106021"
+      - "106022"
+      - "106023"
 
-    pattern: 'Deny (?<protocol>\w+) src (?<src_zone>\w+):(?<src_ip>[^/]+)/(?<src_port>\d+) dst (?<dst_zone>\w+):(?<dst_ip>[^/]+)/(?<dst_port>\d+) by access-group "(?<access_group>[^"]+)"'
+    fields:
+      protocol: raw_protocol
+      src_ip: raw_src_ip
+      src_port: raw_src_port
+      src_zone: raw_src_zone
+      dst_ip: raw_dst_ip
+      dst_port: raw_dst_port
+      dst_zone: raw_dst_zone
+      access_group: raw_access_group
+      rule: raw_rule
 
-  # ASA 305011
-  # Dynamic NAT translation
-  - when:
-      raw_message_id: "305011"
+  nat:
+    message_ids:
+      - "305011"
+      - "305012"
+      - "305013"
+      - "305014"
+      - "305015"
+      - "305016"
 
-    pattern: 'Built dynamic (?<protocol>\w+) translation from (?<src_zone>\w+):(?<src_ip>[^/]+)/(?<src_port>\d+) to (?<dst_zone>\w+):(?<dst_ip>[^/]+)/(?<dst_port>\d+)'
+    fields:
+      protocol: raw_protocol
+      original_src_ip: raw_original_src_ip
+      original_src_port: raw_original_src_port
+      original_src_zone: raw_original_src_zone
+      translated_src_ip: raw_translated_src_ip
+      translated_src_port: raw_translated_src_port
+      translated_src_zone: raw_translated_src_zone
+      original_dst_ip: raw_original_dst_ip
+      original_dst_port: raw_original_dst_port
+      translated_dst_ip: raw_translated_dst_ip
+      translated_dst_port: raw_translated_dst_port
 
-  # ASA 302014
-  # TCP connection teardown
-  - when:
-      raw_message_id: "302014"
+  authentication:
+    message_ids:
+      - "113001"
+      - "113002"
+      - "113003"
+      - "113004"
+      - "113005"
 
-    pattern: 'Teardown (?<protocol>\w+) connection (?<connection_id>\d+) for (?<dst_zone>\w+):(?<dst_ip>[^/]+)/(?<dst_port>\d+) to (?<src_zone>\w+):(?<src_ip>[^/]+)/(?<src_port>\d+) duration (?<duration>[\d:]+) bytes (?<bytes>\d+) (?<end_reason>.+)'
+    fields:
+      username: raw_username
+      authentication_method: raw_authentication_method
+      source_ip: raw_auth_source_ip
+      destination_ip: raw_auth_destination_ip
+      result: raw_auth_result
 
-# ------------------------------------------------------------
-# OCSF Classification
-# ------------------------------------------------------------
+# ---- classification ----
 classification:
 
   default_class_uid: 4001
@@ -86,105 +131,95 @@ classification:
 
   rules:
 
-    - when:
-        raw_message_id: "302013"
-      class_uid: 4001
-      class_name: "Network Activity"
-      activity_id: 1
+    connection_open:
+      when:
+        message_family: "connection"
+        event_action: "open"
+
       activity_name: "Open"
 
-    - when:
-        raw_message_id: "106023"
-      class_uid: 4001
-      class_name: "Network Activity"
-      activity_id: 6
-      activity_name: "Refuse"
+    connection_close:
+      when:
+        message_family: "connection"
+        event_action: "close"
 
-    - when:
-        raw_message_id: "305011"
-      class_uid: 4001
-      class_name: "Network Activity"
-      activity_id: 1
-      activity_name: "Open"
-
-    - when:
-        raw_message_id: "302014"
-      class_uid: 4001
-      class_name: "Network Activity"
-      activity_id: 2
       activity_name: "Close"
 
-# ------------------------------------------------------------
-# OCSF Field Mapping
-# ------------------------------------------------------------
+    access_denied:
+      when:
+        message_family: "access_control"
+        event_action: "deny"
+
+      activity_name: "Refuse"
+
+    nat_translation:
+      when:
+        message_family: "nat"
+        event_action: "translate"
+
+      activity_name: "Open"
+
+    authentication:
+      when:
+        message_family: "authentication"
+
+      class_name: "Authentication"
+      activity_name: "Authenticate"
+
+# ---- field_map ----
+# Source-independent OCSF-oriented normalized representation.
+
 field_map:
 
-  # ---- Network endpoints ----
-
-  src_ip:
+  raw_src_ip:
     "src_endpoint.ip"
 
-  src_port:
+  raw_src_port:
     "src_endpoint.port"
 
-  src_zone:
+  raw_src_zone:
     "src_endpoint.zone"
 
-  dst_ip:
+  raw_dst_ip:
     "dst_endpoint.ip"
 
-  dst_port:
+  raw_dst_port:
     "dst_endpoint.port"
 
-  dst_zone:
+  raw_dst_zone:
     "dst_endpoint.zone"
 
-  # ---- Protocol ----
-
-  protocol:
+  raw_protocol:
     "connection_info.protocol_name"
 
-  # ---- Connection ----
-
-  connection_id:
+  raw_connection_id:
     "connection_info.uid"
 
-  duration:
+  raw_duration:
     "connection_info.duration"
 
-  end_reason:
+  raw_end_reason:
     "connection_info.end_reason"
 
-  direction:
-    "connection_info.direction"
-
-  # ---- NAT ----
-
-  nat_src_ip:
-    "src_endpoint.ip"
-
-  nat_src_port:
-    "src_endpoint.port"
-
-  nat_dst_ip:
-    "dst_endpoint.ip"
-
-  nat_dst_port:
-    "dst_endpoint.port"
-
-  # ---- Traffic ----
-
-  bytes:
+  raw_bytes:
     "traffic.bytes"
 
-  # ---- Policy ----
-
-  access_group:
+  raw_access_group:
     "policy.name"
 
-# ------------------------------------------------------------
-# Static OCSF fields
-# ------------------------------------------------------------
+  raw_username:
+    "actor.user.name"
+
+  raw_authentication_method:
+    "authentication.type"
+
+  raw_auth_source_ip:
+    "src_endpoint.ip"
+
+  raw_auth_destination_ip:
+    "dst_endpoint.ip"
+
+# ---- static fields ----
 static_fields:
 
   "device.vendor_name": "Cisco"
@@ -193,9 +228,7 @@ static_fields:
   "metadata.product.vendor_name": "Cisco"
   "metadata.product.name": "Adaptive Security Appliance"
 
-# ------------------------------------------------------------
-# Transforms
-# ------------------------------------------------------------
+# ---- transforms ----
 transforms:
 
   raw_severity:
@@ -204,48 +237,41 @@ transforms:
   raw_message_id:
     type: "integer"
 
-  src_port:
+  raw_src_port:
     type: "integer"
 
-  dst_port:
+  raw_dst_port:
     type: "integer"
 
-  nat_src_port:
+  raw_connection_id:
     type: "integer"
 
-  nat_dst_port:
+  raw_bytes:
     type: "integer"
 
-  connection_id:
-    type: "integer"
-
-  bytes:
-    type: "integer"
-
-  duration:
+  raw_duration:
     type: "duration"
 
-  protocol:
+  raw_protocol:
     type: "passthrough_upper"
 
-# ------------------------------------------------------------
-# Timestamp
-# ------------------------------------------------------------
+# ---- timestamp ----
 timestamp:
   source_field: "raw_timestamp"
   format: "%b %d %Y %H:%M:%S"
   timezone: "local"
 
-# ------------------------------------------------------------
-# Unmapped fields
-# ------------------------------------------------------------
+# ---- unmapped fields ----
+# Any ASA fields for which the current OCSF mapping does not
+# have a corresponding destination are preserved here.
+
 unmapped_policy:
   action: "bucket"
   target: "unmapped"
 
-# ------------------------------------------------------------
-# Raw preservation
-# ------------------------------------------------------------
+# ---- raw preservation ----
+# Always preserve the original Cisco ASA Syslog message.
+
 raw_preservation:
   enabled: true
   target_field: "raw_data"

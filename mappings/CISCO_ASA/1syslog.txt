@@ -1,4 +1,0 @@
-Aug 31 2026 15:45:01: %ASA-6-302013: Built outbound TCP connection 104521 for outside:142.250.190.46/443 (142.250.190.46/443) to inside:192.168.1.105/51220 (203.0.113.10/15220)
-Aug 31 2026 15:45:12: %ASA-4-106023: Deny tcp src outside:45.227.254.12/58231 dst inside:192.168.1.50/22 by access-group "OUTSIDE_IN" [0x0, 0x0]
-Aug 31 2026 15:45:30: %ASA-5-305011: Built dynamic TCP translation from inside:192.168.1.142/61043 to outside:203.0.113.10/16043
-Aug 31 2026 15:45:45: %ASA-6-302014: Teardown TCP connection 104521 for outside:142.250.190.46/443 to inside:192.168.1.105/51220 duration 0:00:44 bytes 5420 TCP FIN-ACK

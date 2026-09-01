@@ -1,3 +1,4 @@
+import os
 from typing import TypedDict
 from pathlib import Path
 
@@ -11,10 +12,12 @@ from tools import list_files, find_files, read_file
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 VECTORSTORE_DIR = BASE_DIR / "vectorstore"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 embeddings = OllamaEmbeddings(
-    model="nomic-embed-text"
+    model="nomic-embed-text",
+    base_url=OLLAMA_BASE_URL,
 )
 
 
@@ -31,7 +34,8 @@ retriever = vectorstore.as_retriever(
 
 llm = ChatOllama(
     model="phi4-mini",
-    temperature=0
+    base_url=OLLAMA_BASE_URL,
+    temperature=0,
 )
 
 

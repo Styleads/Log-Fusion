@@ -1,0 +1,34 @@
+services:
+  # RAG Chatbot CLI service
+  rag-chatbot:
+    build: .
+    image: rag-chatbot:latest
+    container_name: ulpf-rag-chatbot
+    stdin_open: true
+    tty: true
+    environment:
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./documents:/app/documents
+      - ./vectorstore:/app/vectorstore
+
+  # Optional containerized Ollama LLM / Embedding engine
+  # Start with: docker compose --profile with-ollama up -d
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ulpf-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    profiles:
+      - with-ollama
+
+volumes:
+  ollama-data:
+

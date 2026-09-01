@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -10,6 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 DOCUMENTS_DIR = BASE_DIR / "documents"
 VECTORSTORE_DIR = BASE_DIR / "vectorstore"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 def load_custom_file(path: Path) -> Document:
     """
@@ -90,13 +92,14 @@ def create_vectorstore(folder_path: str):
     )
 
     embeddings = OllamaEmbeddings(
-        model="nomic-embed-text"
+        model="nomic-embed-text",
+        base_url=OLLAMA_BASE_URL,
     )
 
     vectorstore = Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
-        persist_directory=VECTORSTORE_DIR,
+        persist_directory=str(VECTORSTORE_DIR),
     )
 
     print("Vector database created.")
@@ -107,5 +110,6 @@ def create_vectorstore(folder_path: str):
 if __name__ == "__main__":
 
     create_vectorstore(
-        "documents"
+        str(DOCUMENTS_DIR)
     )
+

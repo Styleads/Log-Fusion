@@ -1,0 +1,102 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+
+  "mappings": {
+    "dynamic": true,
+
+    "properties": {
+
+      "event_id": {
+        "type": "keyword"
+      },
+
+      "ingested_at": {
+        "type": "date"
+      },
+
+      "raw_event": {
+        "type": "object",
+        "enabled": true
+      },
+
+      "provenance": {
+        "type": "object",
+        "dynamic": true
+      },
+
+      "normalized_event": {
+
+        "type": "object",
+
+        "dynamic": true,
+
+        "properties": {
+
+          "time": {
+            "type": "date"
+          },
+
+          "severity_id": {
+            "type": "integer"
+          },
+
+          "activity_id": {
+            "type": "integer"
+          },
+
+          "class_uid": {
+            "type": "integer"
+          },
+
+          "category_uid": {
+            "type": "integer"
+          },
+
+          "message": {
+            "type": "text"
+          },
+
+          "src_endpoint": {
+
+            "type": "object",
+
+            "properties": {
+
+              "ip": {
+                "type": "ip"
+              },
+
+              "port": {
+                "type": "integer"
+              }
+            }
+          },
+
+          "dst_endpoint": {
+
+            "type": "object",
+
+            "properties": {
+
+              "ip": {
+                "type": "ip"
+              },
+
+              "port": {
+                "type": "integer"
+              }
+            }
+          },
+
+          "device": {
+            "type": "object",
+            "dynamic": true
+          }
+        }
+      }
+    }
+  }
+}

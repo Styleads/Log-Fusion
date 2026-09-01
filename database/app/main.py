@@ -309,37 +309,6 @@ def create_events_bulk(payload: BulkEvents):
 
 
 # ---------------------------------------------------------
-# Get event by ID
-# ---------------------------------------------------------
-
-@app.get("/events/{event_id}")
-def get_event(event_id: str):
-
-    try:
-
-        result = client.get(
-            index=INDEX_NAME,
-            id=event_id
-        )
-
-        return result["_source"]
-
-    except Exception as exc:
-
-        if getattr(exc, "status_code", None) == 404:
-
-            raise HTTPException(
-                status_code=404,
-                detail="Event not found"
-            )
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc)
-        )
-
-
-# ---------------------------------------------------------
 # Search events
 # ---------------------------------------------------------
 
@@ -522,6 +491,8 @@ def search_events(
         )
 
 
+
+
 # ---------------------------------------------------------
 # Statistics
 # ---------------------------------------------------------
@@ -621,3 +592,36 @@ def event_stats():
             status_code=500,
             detail=str(exc)
         )
+
+
+# ---------------------------------------------------------
+# Get event by ID
+# ---------------------------------------------------------
+
+@app.get("/events/{event_id}")
+def get_event(event_id: str):
+
+    try:
+
+        result = client.get(
+            index=INDEX_NAME,
+            id=event_id
+        )
+
+        return result["_source"]
+
+    except Exception as exc:
+
+        if getattr(exc, "status_code", None) == 404:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Event not found"
+            )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc)
+        )
+
+

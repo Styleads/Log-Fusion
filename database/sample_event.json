@@ -1,0 +1,33 @@
+{
+  "event_id": "demo-001",
+  "normalized_event": {
+    "class_uid": 4001,
+    "category_uid": 4,
+    "activity_id": 1,
+    "severity_id": 3,
+    "time": "2026-09-01T10:00:00Z",
+    "message": "Firewall denied connection",
+    "src_endpoint": {
+      "ip": "192.168.1.10",
+      "port": 51522
+    },
+    "dst_endpoint": {
+      "ip": "10.0.0.5",
+      "port": 443
+    },
+    "device": {
+      "hostname": "firewall-01",
+      "vendor": "ExampleVendor"
+    }
+  },
+  "raw_event": {
+    "message": "Sep 1 10:00:00 firewall-01 DENY TCP 192.168.1.10:51522 -> 10.0.0.5:443",
+    "format": "syslog",
+    "source": "demo-firewall"
+  },
+  "provenance": {
+    "source": "demo-firewall",
+    "parser": "demo-parser",
+    "normalizer_version": "1.0.0"
+  }
+}

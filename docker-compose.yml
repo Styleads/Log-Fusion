@@ -46,7 +46,7 @@ services:
   engine:
     build:
       context: .
-      dockerfile: src/engine/Dockerfile
+      dockerfile: src/Dockerfile
     image: ulpf-engine:latest
     container_name: ulpf-engine-api
     depends_on:

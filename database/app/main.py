@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -6,9 +7,10 @@ from opensearchpy import OpenSearch, helpers
 from pydantic import BaseModel, Field
 
 
-OPENSEARCH_HOST = "opensearch"
-OPENSEARCH_PORT = 9200
-INDEX_NAME = "ulpf-events"
+OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "opensearch")
+OPENSEARCH_PORT = int(os.getenv("OPENSEARCH_PORT", "9200"))
+INDEX_NAME = os.getenv("OPENSEARCH_INDEX", "ulpf-events")
+
 
 
 app = FastAPI(

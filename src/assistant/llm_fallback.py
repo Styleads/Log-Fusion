@@ -1,5 +1,6 @@
 """One-shot LLM fallback client using local Ollama for ambiguous log field labeling."""
 
+import os
 import json
 import logging
 import urllib.request
@@ -14,11 +15,12 @@ class OllamaFallback:
 
     def __init__(
         self,
-        endpoint: str = "http://localhost:11434/api/generate",
+        endpoint: Optional[str] = None,
         model: str = "phi4-mini",
         timeout: float = 2.0,
     ):
-        self.endpoint = endpoint
+        self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+        self.endpoint = endpoint or f"{self.base_url}/api/generate"
         self.model = model
         self.timeout = timeout
 
@@ -26,7 +28,7 @@ class OllamaFallback:
         """Check if local Ollama server is active and reachable within timeout."""
         try:
             req = urllib.request.Request(
-                "http://localhost:11434/api/tags",
+                f"{self.base_url}/api/tags",
                 headers={"User-Agent": "ULPF-AutoMapping/1.0"},
                 method="GET",
             )
@@ -34,6 +36,7 @@ class OllamaFallback:
                 return resp.status == 200
         except Exception:
             return False
+
 
     def suggest_mappings(
         self,

@@ -1,0 +1,26 @@
+services:
+  # Standalone Normalization Engine Service
+  engine:
+    build:
+      context: ..
+      dockerfile: src/Dockerfile
+    image: ulpf-engine:latest
+    container_name: ulpf-engine-api
+    ports:
+      - "8001:8001"
+    environment:
+      - MAPPINGS_DIR=/app/mappings
+      - STORAGE_API_URL=http://host.docker.internal:8000
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../mappings:/app/mappings
+    networks:
+      - ulpf-network
+
+networks:
+  ulpf-network:
+    name: ulpf-network
+    driver: bridge

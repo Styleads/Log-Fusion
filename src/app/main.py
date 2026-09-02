@@ -231,6 +231,20 @@ async def ingest_file(
     return result
 
 
+@app.post("/api/v1/events/reset")
+@app.delete("/api/v1/events")
+async def reset_events_endpoint():
+    """Forward reset/wipe request to Storage API."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.delete(f"{STORAGE_API_URL}/events")
+            if resp.status_code in (200, 204):
+                return resp.json()
+            return {"status": "storage_error", "detail": resp.text}
+    except Exception as e:
+        return {"status": "storage_unreachable", "error": str(e)}
+
+
 # -------------------------------------------------------------
 # Auto-Mapping Assistant Endpoints
 # -------------------------------------------------------------

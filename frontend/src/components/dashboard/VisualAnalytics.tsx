@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { OCSFEvent } from '../../types/ocsf';
-import { ChevronDown, Check, Calendar, Clock, BarChart3 } from 'lucide-react';
+import { ChevronDown, Check, Calendar, Clock, BarChart3, Activity } from 'lucide-react';
 
 interface VisualAnalyticsProps {
   events: OCSFEvent[];
@@ -12,7 +12,7 @@ interface VisualAnalyticsProps {
 type TimeRangeOption = 'Weeks' | 'Days' | 'Months';
 
 export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({ events }) => {
-  const [timeRange, setTimeRange] = useState<TimeRangeOption>('Weeks');
+  const [timeRange, setTimeRange] = useState<TimeRangeOption>('Days');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -27,50 +27,133 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({ events }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Dynamic datasets depending on selected range
-  const datasets: Record<TimeRangeOption, Array<{ name: string; eps: number; display: string; isPeak?: boolean }>> = {
-    Weeks: [
-      { name: 'Sun', eps: 2.1, display: '2h 10m · 2.1k events' },
-      { name: 'Mon', eps: 4.8, display: '4h 45m · 4.8k events' },
-      { name: 'Tue', eps: 3.2, display: '3h 15m · 3.2k events' },
-      { name: 'Wed', eps: 6.9, display: '2h 45min (Peak Traffic)', isPeak: true },
-      { name: 'Thu', eps: 5.1, display: '5h 05m · 5.1k events' },
-      { name: 'Fri', eps: 7.4, display: '7h 20m · 7.4k events' },
-      { name: 'Sat', eps: 3.8, display: '3h 40m · 3.8k events' }
-    ],
-    Days: [
-      { name: '00:00', eps: 1.2, display: '00:00 UTC · 1.2k events' },
-      { name: '04:00', eps: 0.8, display: '04:00 UTC · 800 events' },
-      { name: '08:00', eps: 3.9, display: '08:00 UTC · 3.9k events' },
-      { name: '12:00', eps: 6.4, display: '12:00 UTC · 6.4k events', isPeak: true },
-      { name: '16:00', eps: 5.2, display: '16:00 UTC · 5.2k events' },
-      { name: '20:00', eps: 4.1, display: '20:00 UTC · 4.1k events' },
-      { name: '23:59', eps: 2.5, display: '23:59 UTC · 2.5k events' }
-    ],
-    Months: [
-      { name: 'Jan', eps: 32.4, display: 'Jan · 32.4k events' },
-      { name: 'Feb', eps: 41.8, display: 'Feb · 41.8k events' },
-      { name: 'Mar', eps: 38.2, display: 'Mar · 38.2k events' },
-      { name: 'Apr', eps: 54.9, display: 'Apr · 54.9k events' },
-      { name: 'May', eps: 61.1, display: 'May · 61.1k events' },
-      { name: 'Jun', eps: 78.4, display: 'Jun · 78.4k events (Highest)', isPeak: true },
-      { name: 'Jul', eps: 69.8, display: 'Jul · 69.8k events' },
-      { name: 'Aug', eps: 72.3, display: 'Aug · 72.3k events' }
-    ]
-  };
+  // Dynamically compute chart data from real event timestamps
+  const activeData = useMemo(() => {
+    if (events.length === 0) {
+      if (timeRange === 'Days') {
+        return [
+          { name: '00:00', eps: 0, display: '00:00 UTC · 0 events', isPeak: false },
+          { name: '04:00', eps: 0, display: '04:00 UTC · 0 events', isPeak: false },
+          { name: '08:00', eps: 0, display: '08:00 UTC · 0 events', isPeak: false },
+          { name: '12:00', eps: 0, display: '12:00 UTC · 0 events', isPeak: false },
+          { name: '16:00', eps: 0, display: '16:00 UTC · 0 events', isPeak: false },
+          { name: '20:00', eps: 0, display: '20:00 UTC · 0 events', isPeak: false },
+          { name: '23:59', eps: 0, display: '23:59 UTC · 0 events', isPeak: false }
+        ];
+      }
+      if (timeRange === 'Weeks') {
+        return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => ({
+          name: day,
+          eps: 0,
+          display: `${day} · 0 events`,
+          isPeak: false
+        }));
+      }
+      return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => ({
+        name: m,
+        eps: 0,
+        display: `${m} · 0 events`,
+        isPeak: false
+      }));
+    }
 
-  const activeData = datasets[timeRange];
+    if (timeRange === 'Days') {
+      const buckets: Record<string, number> = {
+        '00:00': 0,
+        '04:00': 0,
+        '08:00': 0,
+        '12:00': 0,
+        '16:00': 0,
+        '20:00': 0,
+        '23:59': 0
+      };
+
+      events.forEach(ev => {
+        try {
+          const d = new Date(ev.time);
+          const h = d.getHours();
+          if (h < 4) buckets['00:00']++;
+          else if (h < 8) buckets['04:00']++;
+          else if (h < 12) buckets['08:00']++;
+          else if (h < 16) buckets['12:00']++;
+          else if (h < 20) buckets['16:00']++;
+          else if (h < 23) buckets['20:00']++;
+          else buckets['23:59']++;
+        } catch {
+          buckets['12:00']++;
+        }
+      });
+
+      const maxVal = Math.max(...Object.values(buckets), 1);
+      return Object.entries(buckets).map(([name, count]) => ({
+        name,
+        eps: count,
+        display: `${name} UTC · ${count} events`,
+        isPeak: count === maxVal && count > 0
+      }));
+    }
+
+    if (timeRange === 'Weeks') {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const counts = [0, 0, 0, 0, 0, 0, 0];
+
+      events.forEach(ev => {
+        try {
+          const d = new Date(ev.time);
+          const dayIdx = d.getDay();
+          if (!isNaN(dayIdx)) counts[dayIdx]++;
+        } catch {
+          counts[3]++;
+        }
+      });
+
+      const maxVal = Math.max(...counts, 1);
+      return days.map((day, idx) => ({
+        name: day,
+        eps: counts[idx],
+        display: `${day} · ${counts[idx]} events`,
+        isPeak: counts[idx] === maxVal && counts[idx] > 0
+      }));
+    }
+
+    // Months View
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthCounts = new Array(12).fill(0);
+
+    events.forEach(ev => {
+      try {
+        const d = new Date(ev.time);
+        const m = d.getMonth();
+        if (!isNaN(m) && m >= 0 && m < 12) monthCounts[m]++;
+      } catch {
+        monthCounts[8]++;
+      }
+    });
+
+    const maxVal = Math.max(...monthCounts, 1);
+    return months.map((m, idx) => ({
+      name: m,
+      eps: monthCounts[idx],
+      display: `${m} · ${monthCounts[idx]} events`,
+      isPeak: monthCounts[idx] === maxVal && monthCounts[idx] > 0
+    }));
+  }, [events, timeRange]);
 
   return (
     <div className="obsidian-card p-5 sm:p-6 space-y-4">
       {/* Header with Range Dropdown */}
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="text-sm font-bold text-white tracking-wide font-mono">
-            Traffic Velocity & Activity
-          </h4>
-          <p className="text-xs text-slate-400">
-            Perimeter event normalization rate ({timeRange.toLowerCase()} view)
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-cyan-400" />
+            <h4 className="text-sm font-bold text-white tracking-wide font-mono">
+              Traffic Velocity & Ingestion Timeline
+            </h4>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5 font-mono">
+            {events.length > 0 
+              ? `Real-time normalized event distribution (${timeRange.toLowerCase()} view · ${events.length} total events)`
+              : 'Awaiting log ingestion — upload a file to plot live traffic velocity'}
           </p>
         </div>
 
@@ -90,7 +173,7 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({ events }) => {
           {/* Dropdown Popover */}
           {isDropdownOpen && (
             <div className="absolute right-0 mt-2 w-44 rounded-2xl bg-[#131627] border border-slate-700 shadow-2xl shadow-black/80 py-1.5 z-30 animate-fade-in backdrop-blur-xl">
-              {(['Weeks', 'Days', 'Months'] as TimeRangeOption[]).map((option) => (
+              {(['Days', 'Weeks', 'Months'] as TimeRangeOption[]).map((option) => (
                 <button
                   key={option}
                   onClick={() => {
@@ -106,8 +189,8 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({ events }) => {
                   aria-selected={timeRange === option}
                 >
                   <div className="flex items-center gap-2">
-                    {option === 'Weeks' && <Calendar className="w-3.5 h-3.5 text-cyan-400" />}
                     {option === 'Days' && <Clock className="w-3.5 h-3.5 text-purple-400" />}
+                    {option === 'Weeks' && <Calendar className="w-3.5 h-3.5 text-cyan-400" />}
                     {option === 'Months' && <BarChart3 className="w-3.5 h-3.5 text-pink-400" />}
                     <span>{option} View</span>
                   </div>

@@ -11,17 +11,15 @@ import { SecurityChatbot } from './components/chat/SecurityChatbot';
 import { ArchitectureView } from './components/docs/ArchitectureView';
 import { DrilldownModal } from './components/drilldown/DrilldownModal';
 import { InstantIngestModal } from './components/ingest/InstantIngestModal';
-import { NotificationDrawer, NotificationItem } from './components/notifications/NotificationDrawer';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { BottomDock, ActiveTabType } from './components/common/BottomDock';
 import { AutoMappingStudio } from './components/assistant/AutoMappingStudio';
 import { OCSFEvent, OCSFClassName } from './types/ocsf';
 import { FilterState, SummaryStats } from './types/events';
 import { apiService, BackendStatus } from './services/apiService';
-import { SAMPLE_RAW_LOGS } from './data/sampleRawLogs';
 
 export const App: React.FC = () => {
-  // Navigation: 'dashboard' | 'analytics' | 'assistant' | 'ingest' | 'chat' | 'docs'
+  // Navigation: 'dashboard' | 'analytics' | 'assistant' | 'chat' | 'docs'
   const [activeTab, setActiveTab] = useState<ActiveTabType>('dashboard');
 
   // Events & Backend State
@@ -32,16 +30,13 @@ export const App: React.FC = () => {
     lastChecked: new Date().toISOString()
   });
   const [mockMode, setMockMode] = useState<boolean>(false);
+  const [realDataOnly, setRealDataOnly] = useState<boolean>(false);
 
-  // Modals & Drawers
+  // Modals
   const [selectedEvent, setSelectedEvent] = useState<OCSFEvent | null>(null);
   const [isIngestModalOpen, setIsIngestModalOpen] = useState<boolean>(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isLiveStreaming, setIsLiveStreaming] = useState<boolean>(false);
-
-  // Notifications List
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   // Filters
   const [filters, setFilters] = useState<FilterState>({
@@ -55,117 +50,85 @@ export const App: React.FC = () => {
     portFilter: ''
   });
 
-  // Load initial events & notifications
+  // Load initial events from OpenSearch or fallback mock
   useEffect(() => {
     const init = async () => {
       const status = await apiService.checkHealth();
       setBackendStatus(status);
       const initialEvents = await apiService.getEvents();
       setEvents(initialEvents);
-
-      // Seed initial security notifications linked to mock events
-      if (initialEvents.length > 0) {
-        setNotifications([
-          {
-            id: 'notif-1',
-            title: 'Critical Threat Finding: SQL Injection',
-            desc: 'Suricata EVE IDS triggered on DMZ web server (45.33.32.156 -> 10.0.4.80:80)',
-            timeAgo: '2m ago',
-            type: 'critical',
-            read: false,
-            eventRef: initialEvents.find(e => e.class_name === 'Detection Finding') || initialEvents[0]
-          },
-          {
-            id: 'notif-2',
-            title: 'Perimeter Rule Block: SSH Reconnaissance',
-            desc: 'Palo Alto edge-fw-01 blocked external connection on port 22 (203.0.113.45)',
-            timeAgo: '8m ago',
-            type: 'deny',
-            read: false,
-            eventRef: initialEvents[0]
-          },
-          {
-            id: 'notif-3',
-            title: 'SMB Exploit Vector Blocked',
-            desc: 'Fortinet FortiOS default-deny-inbound blocked inbound port 445',
-            timeAgo: '18m ago',
-            type: 'deny',
-            read: true,
-            eventRef: initialEvents[2] || initialEvents[0]
-          },
-          {
-            id: 'notif-4',
-            title: 'YAML Mapping Engine Online',
-            desc: '4 declarative vendor parsers active with 100% lossless OCSF schema compliance',
-            timeAgo: '1h ago',
-            type: 'system',
-            read: true
-          }
-        ]);
-      }
     };
     init();
-  }, []);
 
-  // Periodic health check
-  useEffect(() => {
-    const timer = setInterval(async () => {
+    // Poll backend health status every 15s
+    const interval = setInterval(async () => {
       const status = await apiService.checkHealth();
       setBackendStatus(status);
     }, 15000);
-    return () => clearInterval(timer);
+
+    return () => clearInterval(interval);
   }, []);
 
-  // Live stream generator
+  // Live streaming simulator effect
   useEffect(() => {
     if (!isLiveStreaming) return;
-
-    const streamInterval = setInterval(async () => {
-      const randomSample = SAMPLE_RAW_LOGS[Math.floor(Math.random() * SAMPLE_RAW_LOGS.length)];
-      try {
-        const newEvent = await apiService.ingestRaw(randomSample.raw);
-        setEvents(prev => [newEvent, ...prev]);
-
-        // If it's a critical alert, push a notification
-        if (newEvent.class_name === 'Detection Finding') {
-          setNotifications(prev => [
-            {
-              id: `notif-${Date.now()}`,
-              title: `New Finding: ${newEvent.finding_info?.title || 'Security Alert'}`,
-              desc: `Source ${newEvent.src_endpoint?.ip} targeting ${newEvent.dst_endpoint?.ip}`,
-              timeAgo: 'Just now',
-              type: 'critical',
-              read: false,
-              eventRef: newEvent
-            },
-            ...prev
-          ]);
+    const timer = setInterval(() => {
+      const randSrcPort = Math.floor(Math.random() * 55000) + 1024;
+      const isAllowed = Math.random() > 0.4;
+      const liveEv: OCSFEvent = {
+        class_name: 'Network Activity',
+        class_uid: 4001,
+        activity_name: isAllowed ? 'Allow' : 'Deny',
+        activity_id: isAllowed ? 1 : 6,
+        time: new Date().toISOString(),
+        event_uid: `live-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        raw_data: `2026-08-27 ${new Date().toLocaleTimeString()} ${isAllowed ? 'ALLOW' : 'DROP'} TCP 192.168.1.10${Math.floor(Math.random() * 9)} 10.0.4.15 ${randSrcPort} 443`,
+        raw_format: 'space_delimited',
+        source_vendor: 'Microsoft',
+        source_product: 'Windows Firewall',
+        src_endpoint: {
+          ip: `192.168.1.10${Math.floor(Math.random() * 9)}`,
+          port: randSrcPort,
+          zone: 'trust'
+        },
+        dst_endpoint: {
+          ip: '10.0.4.15',
+          port: 443,
+          zone: 'untrust'
+        },
+        connection_info: {
+          protocol_name: 'TCP',
+          direction: 'outbound'
+        },
+        device: {
+          name: 'win-fw-core',
+          vendor_name: 'Microsoft',
+          type: 'Host Firewall'
         }
-      } catch (err) {
-        console.error('Stream simulation error:', err);
-      }
-    }, 3200);
+      };
+      setEvents(prev => [liveEv, ...prev.slice(0, 199)]);
+    }, 4500);
 
-    return () => clearInterval(streamInterval);
+    return () => clearInterval(timer);
   }, [isLiveStreaming]);
 
-  // Compute available vendors
+  // Distinct vendors in dataset
   const availableVendors = useMemo(() => {
-    const vendorSet = new Set<string>();
+    const set = new Set<string>();
     events.forEach(e => {
       const v = e.device?.vendor_name || e.source_vendor;
-      if (v) vendorSet.add(v);
+      if (v) set.add(v);
     });
-    return Array.from(vendorSet);
+    return Array.from(set);
   }, [events]);
 
-  // Apply filters
+  // Filtered dataset
   const filteredEvents = useMemo(() => {
-    return events.filter(event => {
-      if (filters.searchQuery.trim()) {
-        const query = filters.searchQuery.toLowerCase();
-        const str = `${event.raw_data} ${event.event_uid} ${event.class_name} ${event.device?.vendor_name} ${event.device?.name} ${event.src_endpoint?.ip} ${event.dst_endpoint?.ip} ${event.firewall_rule?.name || ''} ${event.finding_info?.title || ''}`.toLowerCase();
-        if (!str.includes(query)) return false;
+    const list = events.filter(event => {
+      if (filters.searchQuery) {
+        const q = filters.searchQuery.toLowerCase();
+        const strVal = JSON.stringify(event).toLowerCase();
+        if (!strVal.includes(q)) return false;
       }
 
       if (filters.selectedClass !== 'ALL' && event.class_name !== filters.selectedClass) {
@@ -187,7 +150,35 @@ export const App: React.FC = () => {
         return false;
       }
 
+      // Date Range Filtering
+      if (filters.startDate) {
+        try {
+          const evTime = new Date(event.time).getTime();
+          const startTime = new Date(filters.startDate).setHours(0, 0, 0, 0);
+          if (evTime < startTime) return false;
+        } catch {
+          // ignore parsing error
+        }
+      }
+
+      if (filters.endDate) {
+        try {
+          const evTime = new Date(event.time).getTime();
+          const endTime = new Date(filters.endDate).setHours(23, 59, 59, 999);
+          if (evTime > endTime) return false;
+        } catch {
+          // ignore parsing error
+        }
+      }
+
       return true;
+    });
+
+    // Sort by Date (Descending by default, Ascending if selected)
+    return list.sort((a, b) => {
+      const timeA = new Date(a.time).getTime() || 0;
+      const timeB = new Date(b.time).getTime() || 0;
+      return filters.sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
     });
   }, [events, filters]);
 
@@ -224,9 +215,9 @@ export const App: React.FC = () => {
       losslessPreservationRate: 100,
       vendorCounts,
       classCounts,
-      eventsPerSecond: isLiveStreaming ? 14 : 0
+      eventsPerSecond: events.length > 0 ? Number((events.length / 60).toFixed(1)) : 0
     };
-  }, [events, isLiveStreaming]);
+  }, [events]);
 
   // Handlers
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
@@ -253,8 +244,23 @@ export const App: React.FC = () => {
     apiService.checkHealth().then(setBackendStatus);
   };
 
-  const handleResetEvents = () => {
-    const fresh = apiService.resetLocalEvents();
+  const handleToggleRealDataOnly = async () => {
+    const next = !realDataOnly;
+    setRealDataOnly(next);
+    apiService.setRealDataOnly(next);
+    const updated = await apiService.getEvents();
+    setEvents(updated);
+  };
+
+  const handleSeedMockData = () => {
+    setRealDataOnly(false);
+    apiService.setRealDataOnly(false);
+    const seeded = apiService.seedMockEvents();
+    setEvents(seeded);
+  };
+
+  const handleResetEvents = async () => {
+    const fresh = await apiService.resetEvents();
     setEvents(fresh);
   };
 
@@ -264,14 +270,6 @@ export const App: React.FC = () => {
     } else {
       setEvents(prev => [newEvent, ...prev]);
     }
-  };
-
-  const handleMarkAllRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
-
-  const handleClearNotifications = () => {
-    setNotifications([]);
   };
 
   const handleExportNDJSON = () => {
@@ -287,8 +285,6 @@ export const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
   return (
     <div className="min-h-screen bg-[#0c0e17] text-slate-100 flex flex-col font-sans pb-28">
       
@@ -299,21 +295,21 @@ export const App: React.FC = () => {
         onToggleMockMode={handleToggleMockMode}
         onResetEvents={handleResetEvents}
         totalEventsCount={events.length}
-        unreadNotificationsCount={unreadCount}
-        onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Main App Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         
-        {/* VIEW 1: OVERVIEW & FEED (Mockup Screen 1) */}
+        {/* VIEW 1: OVERVIEW & FEED */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-fade-in">
             {/* Hero Incident Carousel Card */}
             <HeroCarouselCard
+              events={events}
               topEvent={events[0]}
               onInspect={(e) => setSelectedEvent(e)}
+              onOpenIngest={() => setIsIngestModalOpen(true)}
             />
 
             {/* KPI Stat Cards */}
@@ -351,7 +347,7 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* VIEW 2: STATISTICS & CONCENTRIC RINGS (Mockup Screen 2) */}
+        {/* VIEW 2: STATISTICS & CONCENTRIC RINGS */}
         {activeTab === 'analytics' && (
           <div className="space-y-6 animate-fade-in">
             <ConcentricProgressRing stats={summaryStats} />
@@ -384,7 +380,7 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* VIEW 4: OCSF DOCS & YAML MAPPING CONFIGS */}
+        {/* VIEW 5: OCSF DOCS & YAML MAPPING CONFIGS */}
         {activeTab === 'docs' && (
           <div className="animate-fade-in">
             <ArchitectureView />
@@ -400,7 +396,7 @@ export const App: React.FC = () => {
         onOpenIngestModal={() => setIsIngestModalOpen(true)}
       />
 
-      {/* Instant Ingest & Normalization Modal (Triggered by + Button) */}
+      {/* Instant Ingest & Normalization Modal */}
       <InstantIngestModal
         isOpen={isIngestModalOpen}
         onClose={() => setIsIngestModalOpen(false)}
@@ -408,17 +404,7 @@ export const App: React.FC = () => {
         onOpenDrilldown={(e) => setSelectedEvent(e)}
       />
 
-      {/* Notifications Drawer (Triggered by Bell Button) */}
-      <NotificationDrawer
-        isOpen={isNotificationsOpen}
-        onClose={() => setIsNotificationsOpen(false)}
-        notifications={notifications}
-        onMarkAllRead={handleMarkAllRead}
-        onClearAll={handleClearNotifications}
-        onSelectEvent={(e) => setSelectedEvent(e)}
-      />
-
-      {/* Settings Modal (Triggered by Gear Button / Avatar) */}
+      {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -426,9 +412,12 @@ export const App: React.FC = () => {
         onToggleMockMode={handleToggleMockMode}
         backendStatus={backendStatus}
         onResetEvents={handleResetEvents}
+        realDataOnly={realDataOnly}
+        onToggleRealDataOnly={handleToggleRealDataOnly}
+        onSeedMockData={handleSeedMockData}
       />
 
-      {/* Forensic Drill-Down Modal (Side-by-Side Raw vs OCSF JSON) */}
+      {/* Forensic Drill-Down Modal */}
       {selectedEvent && (
         <DrilldownModal
           event={selectedEvent}

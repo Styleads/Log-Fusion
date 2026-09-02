@@ -627,3 +627,24 @@ def get_event(event_id: str):
         )
 
 
+# ---------------------------------------------------------
+# Wipe / Reset all events
+# ---------------------------------------------------------
+
+@app.delete("/events")
+@app.post("/events/reset")
+def reset_events():
+    """Wipe all events in OpenSearch index and recreate clean index."""
+    try:
+        if client.indices.exists(index=INDEX_NAME):
+            client.indices.delete(index=INDEX_NAME)
+        ensure_index()
+        return {"status": "success", "message": "All events successfully wiped from OpenSearch index"}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reset index: {exc}"
+        )
+
+
+

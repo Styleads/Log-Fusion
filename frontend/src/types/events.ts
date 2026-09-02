@@ -6,7 +6,10 @@ export interface FilterState {
   selectedVendor: string;
   selectedAction: string;
   selectedSeverity: string;
-  timeRange: '15m' | '1h' | '24h' | '7d' | 'ALL';
+  timeRange: '15m' | '1h' | '24h' | '7d' | 'ALL' | 'CUSTOM';
+  startDate?: string;
+  endDate?: string;
+  sortOrder?: 'desc' | 'asc';
   ipFilter: string;
   portFilter: string;
 }

@@ -7,9 +7,9 @@ interface ConcentricProgressRingProps {
 }
 
 export const ConcentricProgressRing: React.FC<ConcentricProgressRingProps> = ({ stats }) => {
-  const denyPercent = stats.totalEvents > 0 ? Math.round((stats.denyCount / stats.totalEvents) * 100) : 68;
-  const allowPercent = stats.totalEvents > 0 ? Math.round((stats.allowCount / stats.totalEvents) * 100) : 32;
-  const losslessPercent = 100;
+  const denyPercent = stats.totalEvents > 0 ? Math.round((stats.denyCount / stats.totalEvents) * 100) : 0;
+  const allowPercent = stats.totalEvents > 0 ? Math.round((stats.allowCount / stats.totalEvents) * 100) : 0;
+  const losslessPercent = stats.totalEvents > 0 ? 100 : 0;
 
   // SVG parameters for concentric rings
   const size = 180;
@@ -18,7 +18,7 @@ export const ConcentricProgressRing: React.FC<ConcentricProgressRingProps> = ({ 
   // Ring 1 (Outer - Purple: Network Activity / Volume)
   const r1 = 70;
   const c1 = 2 * Math.PI * r1;
-  const stroke1 = c1 * 0.85;
+  const stroke1 = stats.totalEvents > 0 ? c1 * 0.85 : 0;
 
   // Ring 2 (Middle - Pink/Magenta: Deny Mitigation)
   const r2 = 54;
@@ -28,7 +28,7 @@ export const ConcentricProgressRing: React.FC<ConcentricProgressRingProps> = ({ 
   // Ring 3 (Inner - Cyan/Blue: Lossless Traceability)
   const r3 = 38;
   const c3 = 2 * Math.PI * r3;
-  const stroke3 = c3 * 0.98;
+  const stroke3 = stats.totalEvents > 0 ? c3 * 0.98 : 0;
 
   return (
     <div className="obsidian-card p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-6">

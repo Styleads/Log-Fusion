@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Bell, Server, RefreshCw, Settings } from 'lucide-react';
+import { ShieldCheck, Server, RefreshCw, Settings } from 'lucide-react';
 import { BackendStatus } from '../../services/apiService';
 
 interface HeaderProps {
@@ -8,8 +8,6 @@ interface HeaderProps {
   onToggleMockMode: () => void;
   onResetEvents: () => void;
   totalEventsCount: number;
-  unreadNotificationsCount: number;
-  onOpenNotifications: () => void;
   onOpenSettings: () => void;
 }
 
@@ -18,8 +16,6 @@ export const Header: React.FC<HeaderProps> = ({
   mockMode,
   onToggleMockMode,
   onResetEvents,
-  unreadNotificationsCount,
-  onOpenNotifications,
   onOpenSettings
 }) => {
   return (
@@ -39,12 +35,12 @@ export const Header: React.FC<HeaderProps> = ({
               </h2>
             </div>
             <p className="text-[10px] font-mono text-cyan-400">
-              https://LogFusion.com · OCSF v1.1.0
+              OCSF v1.1.0 · Schema Normalization Engine
             </p>
           </div>
         </div>
 
-        {/* Right Controls: Mode Switcher + Notification Bell + Settings + Avatar */}
+        {/* Right Controls: Mode Switcher + Reset + Settings */}
         <div className="flex items-center gap-2.5">
           {/* Mode Switcher */}
           <button
@@ -62,28 +58,14 @@ export const Header: React.FC<HeaderProps> = ({
             <span>{mockMode ? 'Standalone Engine' : ':8000 Live'}</span>
           </button>
 
-          {/* Reset Dataset */}
+          {/* Reset Dataset & OpenSearch Database */}
           <button
             onClick={onResetEvents}
-            title="Reset dataset"
-            className="p-2 rounded-2xl bg-[#141726] hover:bg-[#1e233b] border border-white/5 text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+            title="Reset dataset & wipe database"
+            className="p-2 rounded-2xl bg-[#141726] hover:bg-[#1e233b] border border-white/5 text-slate-400 hover:text-cyan-400 transition-all cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
-
-          {/* Notification Bell Button */}
-          <div className="relative">
-            <button
-              onClick={onOpenNotifications}
-              title="Open Notifications"
-              className="p-2 rounded-2xl bg-[#141726] hover:bg-[#1e233b] border border-white/5 text-slate-300 hover:text-white transition-all cursor-pointer"
-            >
-              <Bell className="w-4 h-4" />
-            </button>
-            {unreadNotificationsCount > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-pink-500 shadow-[0_0_8px_#ec4899] animate-pulse" />
-            )}
-          </div>
 
           {/* Settings Button */}
           <button
@@ -93,17 +75,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Settings className="w-4 h-4" />
           </button>
-
-          {/* User Avatar */}
-          <div
-            onClick={onOpenSettings}
-            title="SOC Analyst Profile & Settings"
-            className="w-8 h-8 rounded-2xl bg-gradient-to-tr from-purple-500 via-pink-500 to-amber-400 p-[1.5px] shadow-sm cursor-pointer hover:scale-105 transition-transform"
-          >
-            <div className="w-full h-full rounded-2xl bg-[#131627] flex items-center justify-center text-xs font-bold text-white">
-              🛡️
-            </div>
-          </div>
         </div>
 
       </div>

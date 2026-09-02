@@ -19,6 +19,7 @@ const ENGINE_API_BASE = '/engine-api';
 
 class ApiService {
   private useMockOnly: boolean = false;
+  private realDataOnly: boolean = false;
   private localEvents: OCSFEvent[] = [...INITIAL_MOCK_EVENTS];
 
   public setMockMode(forceMock: boolean) {
@@ -27,6 +28,23 @@ class ApiService {
 
   public getMockMode(): boolean {
     return this.useMockOnly;
+  }
+
+  public setRealDataOnly(enable: boolean) {
+    this.realDataOnly = enable;
+    if (enable) {
+      this.localEvents = this.localEvents.filter(e => !e.event_uid.startsWith('mock-'));
+    }
+  }
+
+  public getRealDataOnly(): boolean {
+    return this.realDataOnly;
+  }
+
+  public seedMockEvents(): OCSFEvent[] {
+    this.realDataOnly = false;
+    this.localEvents = [...INITIAL_MOCK_EVENTS];
+    return this.localEvents;
   }
 
   /**
@@ -124,7 +142,7 @@ class ApiService {
 
           // Merge backend events with local memory events, avoiding duplicates by event_uid
           const map = new Map<string, OCSFEvent>();
-          for (const ev of [...mappedEvents, ...this.localEvents]) {
+          for (const ev of [...mappedEvents, ...(this.realDataOnly ? this.localEvents.filter(e => !e.event_uid.startsWith('mock-')) : this.localEvents)]) {
             if (ev && ev.event_uid) {
               map.set(ev.event_uid, ev);
             }
@@ -137,6 +155,9 @@ class ApiService {
       console.warn('Storage API events search failed, using local events', err);
     }
 
+    if (this.realDataOnly) {
+      return this.localEvents.filter(e => !e.event_uid.startsWith('mock-'));
+    }
     return [...this.localEvents];
   }
 
@@ -291,8 +312,27 @@ class ApiService {
   }
 
   /**
-   * Reset local dataset to default mock
+   * Reset dataset: Wipe all events from OpenSearch database and reset in-memory state
    */
+  async resetEvents(): Promise<OCSFEvent[]> {
+    this.localEvents = this.realDataOnly ? [] : [...INITIAL_MOCK_EVENTS];
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      // Wipe from Storage API / OpenSearch
+      await fetch(`${STORAGE_API_BASE}/events`, {
+        method: 'DELETE',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+    } catch (err) {
+      console.warn('Failed to wipe OpenSearch events index:', err);
+    }
+    return this.localEvents;
+  }
+
   resetLocalEvents(): OCSFEvent[] {
     this.localEvents = [...INITIAL_MOCK_EVENTS];
     return this.localEvents;

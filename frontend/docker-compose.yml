@@ -1,0 +1,22 @@
+services:
+  # Standalone Frontend Service
+  frontend:
+    build: .
+    image: ulpf-frontend:latest
+    container_name: ulpf-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - STORAGE_API_URL=http://host.docker.internal:8000
+      - ENGINE_API_URL=http://host.docker.internal:8001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./src:/app/src
+    networks:
+      - ulpf-network
+
+networks:
+  ulpf-network:
+    name: ulpf-network
+    driver: bridge

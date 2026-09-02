@@ -1,0 +1,15 @@
+services:
+  # Standalone Normalization Engine Service
+  engine:
+    build:
+      context: ..
+      dockerfile: src/Dockerfile
+    image: ulpf-engine:latest
+    container_name: ulpf-engine-api
+    ports:
+      - "8001:8001"
+    environment:
+      - MAPPINGS_DIR=/app/mappings
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../mappings:/app/mappings

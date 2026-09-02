@@ -1,0 +1,115 @@
+services:
+  # -------------------------------------------------------------
+  # 1. OpenSearch Database Engine
+  # -------------------------------------------------------------
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    container_name: ulpf-opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - ulpf-network
+
+  # -------------------------------------------------------------
+  # 2. OpenSearch Storage API (FastAPI)
+  # -------------------------------------------------------------
+  storage-api:
+    build:
+      context: ./database
+    image: ulpf-storage-api:latest
+    container_name: ulpf-storage-api
+    depends_on:
+      - opensearch
+    environment:
+      - OPENSEARCH_HOST=opensearch
+      - OPENSEARCH_PORT=9200
+      - OPENSEARCH_INDEX=ulpf-events
+    ports:
+      - "8000:8000"
+    networks:
+      - ulpf-network
+
+  # -------------------------------------------------------------
+  # 3. Log Normalization Engine API & CLI (FastAPI)
+  # -------------------------------------------------------------
+  engine:
+    build:
+      context: .
+      dockerfile: src/Dockerfile
+    image: ulpf-engine:latest
+    container_name: ulpf-engine-api
+    depends_on:
+      - storage-api
+    environment:
+      - STORAGE_API_URL=http://storage-api:8000
+      - MAPPINGS_DIR=/app/mappings
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./mappings:/app/mappings
+    networks:
+      - ulpf-network
+
+  # -------------------------------------------------------------
+  # 4. Frontend Dashboard (React + Vite)
+  # -------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+    image: ulpf-frontend:latest
+    container_name: ulpf-frontend
+    depends_on:
+      - storage-api
+      - engine
+    ports:
+      - "3000:3000"
+    environment:
+      - STORAGE_API_URL=http://storage-api:8000
+      - ENGINE_API_URL=http://engine:8001
+    networks:
+      - ulpf-network
+
+  # -------------------------------------------------------------
+  # 5. RAG Chatbot Service (Interactive / LangGraph)
+  # -------------------------------------------------------------
+  rag-chatbot:
+    build:
+      context: ./rag_chatbots
+    image: ulpf-rag-chatbot:latest
+    container_name: ulpf-rag-chatbot
+    stdin_open: true
+    tty: true
+    environment:
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./rag_chatbots/documents:/app/documents
+      - ./rag_chatbots/vectorstore:/app/vectorstore
+    networks:
+      - ulpf-network
+
+# ---------------------------------------------------------------
+# Unified Network & Shared Volumes
+# ---------------------------------------------------------------
+networks:
+  ulpf-network:
+    name: ulpf-network
+    driver: bridge
+
+volumes:
+  opensearch-data:

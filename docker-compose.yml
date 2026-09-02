@@ -103,6 +103,19 @@ services:
     networks:
       - ulpf-network
 
+  # -------------------------------------------------------------
+  # 6. Anomaly Detection Analytics Engine (Job / CLI)
+  # -------------------------------------------------------------
+  anomaly-detection:
+    build:
+      context: ./anomaly_detection
+    image: ulpf-anomaly-detection:latest
+    container_name: ulpf-anomaly-detection
+    volumes:
+      - .:/data
+    networks:
+      - ulpf-network
+
 # ---------------------------------------------------------------
 # Unified Network & Shared Volumes
 # ---------------------------------------------------------------

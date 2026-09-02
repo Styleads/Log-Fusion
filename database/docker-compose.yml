@@ -2,38 +2,41 @@ services:
   opensearch:
     image: opensearchproject/opensearch:2.19.1
     container_name: ulpf-opensearch
-
     environment:
       - discovery.type=single-node
       - DISABLE_SECURITY_PLUGIN=true
       - bootstrap.memory_lock=true
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
-
     ulimits:
       memlock:
         soft: -1
         hard: -1
-
     ports:
       - "9200:9200"
-
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - ulpf-network
 
   storage-api:
     build: .
+    image: ulpf-storage-api:latest
     container_name: ulpf-storage-api
-
     depends_on:
       - opensearch
-
     environment:
       - OPENSEARCH_HOST=opensearch
       - OPENSEARCH_PORT=9200
       - OPENSEARCH_INDEX=ulpf-events
-
     ports:
       - "8000:8000"
+    networks:
+      - ulpf-network
+
+networks:
+  ulpf-network:
+    name: ulpf-network
+    driver: bridge
 
 volumes:
   opensearch-data:

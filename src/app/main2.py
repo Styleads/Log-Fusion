@@ -1,24 +1,68 @@
-<<<<<<< HEAD
+"""FastAPI Backend API for Log-Fusion (ULPF), Normalization Engine, and Auto-Mapping Assistant."""
+
 import os
 import logging
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Query
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 import httpx
 
 from src.engine.pipeline import NormalizationPipeline
+from src.assistant.service import AutoMappingAssistant
 
 logger = logging.getLogger("ulpf.engine_api")
 
-app = FastAPI(
-    title="ULPF Log Normalization Engine API",
-    version="1.0.0",
-    description="Universal Log Pre-processing & OCSF Normalization API",
-)
-
 pipeline: Optional[NormalizationPipeline] = None
+assistant: Optional[AutoMappingAssistant] = None
 STORAGE_API_URL = os.getenv("STORAGE_API_URL", "http://storage-api:8000")
 
+
+def get_pipeline() -> NormalizationPipeline:
+    global pipeline
+    if pipeline is None:
+        mappings_path = os.getenv("MAPPINGS_DIR", None)
+        pipeline = NormalizationPipeline(mappings_dir_or_loader=mappings_path)
+    return pipeline
+
+
+def get_assistant() -> AutoMappingAssistant:
+    global assistant
+    if assistant is None:
+        assistant = AutoMappingAssistant()
+    return assistant
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global pipeline, assistant
+    pipeline = get_pipeline()
+    assistant = get_assistant()
+    logger.info("ULPF Normalization Pipeline and Auto-Mapping Assistant initialized.")
+    yield
+
+
+app = FastAPI(
+    title="Log-Fusion (ULPF) Normalization & Auto-Mapping API",
+    description="Universal Log Pre-processing Framework with declarative YAML mapping and Auto-Mapping Assistant",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS middleware to support local and docker frontend communication
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# -------------------------------------------------------------
+# Pydantic Request Models
+# -------------------------------------------------------------
 
 class LineIn(BaseModel):
     raw_line: str
@@ -29,6 +73,23 @@ class BatchIn(BaseModel):
     raw_lines: List[str]
     forward_to_storage: Optional[bool] = False
 
+
+class AssistantAnalyzeRequest(BaseModel):
+    source_name: str = Field(..., description="Human-readable name of the log source (e.g. 'SonicWall Firewall')")
+    raw_lines: List[str] = Field(..., min_length=1, description="Sample raw log lines from the unknown device")
+    device_type: Optional[str] = Field(default=None, description="Optional device hint (firewall, ids, vpn, router, proxy)")
+    use_llm: Optional[bool] = Field(default=False, description="Enable local Ollama fallback for ambiguous fields")
+
+
+class AssistantSaveRequest(BaseModel):
+    source_name: str = Field(..., description="Source name used to slugify mapping directory")
+    yaml_content: str = Field(..., description="Complete YAML draft content")
+    raw_lines: List[str] = Field(..., description="Raw sample lines saved verbatim to synthetic_sample.log")
+
+
+# -------------------------------------------------------------
+# Storage Forwarding Helper
+# -------------------------------------------------------------
 
 async def _forward_events_to_storage(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Helper to send normalized events to the Storage API."""
@@ -62,28 +123,31 @@ async def _forward_events_to_storage(events: List[Dict[str, Any]]) -> Dict[str, 
         return {"status": "storage_unreachable", "error": str(e)}
 
 
-@app.on_event("startup")
-async def startup_event():
-    global pipeline
-    mappings_path = os.getenv("MAPPINGS_DIR", None)
-    pipeline = NormalizationPipeline(mappings_dir_or_loader=mappings_path)
-    logger.info("NormalizationPipeline initialized successfully.")
-
+# -------------------------------------------------------------
+# Health Check Endpoint
+# -------------------------------------------------------------
 
 @app.get("/health")
 async def health():
+    pipe = get_pipeline()
+    asst = get_assistant()
     return {
         "status": "ok",
-        "pipeline_loaded": pipeline is not None,
+        "pipeline_loaded": pipe is not None,
+        "assistant_loaded": asst is not None,
         "storage_api_url": STORAGE_API_URL,
+        "version": "1.0.0",
     }
 
 
+# -------------------------------------------------------------
+# Core Ingestion Endpoints
+# -------------------------------------------------------------
+
 @app.post("/api/v1/ingest/line")
 async def ingest_line(payload: LineIn):
-    if pipeline is None:
-        raise HTTPException(status_code=500, detail="Pipeline not initialized.")
-    ev = pipeline.process_line(payload.raw_line)
+    pipe = get_pipeline()
+    ev = pipe.process_line(payload.raw_line)
     if not ev:
         return {"status": "skipped_or_unrecognized"}
     
@@ -101,10 +165,8 @@ async def ingest_line(payload: LineIn):
 
 @app.post("/api/v1/ingest/batch")
 async def ingest_batch(payload: BatchIn):
-    if pipeline is None:
-        raise HTTPException(status_code=500, detail="Pipeline not initialized.")
-    
-    events = pipeline.process_lines(payload.raw_lines)
+    pipe = get_pipeline()
+    events = pipe.process_lines(payload.raw_lines)
     result: Dict[str, Any] = {
         "status": "success",
         "total_lines": len(payload.raw_lines),
@@ -123,9 +185,7 @@ async def ingest_file(
     file: UploadFile = File(...),
     forward_to_storage: bool = Query(default=False),
 ):
-    if pipeline is None:
-        raise HTTPException(status_code=500, detail="Pipeline not initialized.")
-    
+    pipe = get_pipeline()
     content = await file.read()
     try:
         text = content.decode("utf-8")
@@ -133,7 +193,7 @@ async def ingest_file(
         text = content.decode("latin-1")
         
     lines = text.splitlines()
-    events = pipeline.process_lines(lines)
+    events = pipe.process_lines(lines)
     
     result: Dict[str, Any] = {
         "status": "success",
@@ -147,110 +207,11 @@ async def ingest_file(
         result["storage_response"] = await _forward_events_to_storage(events)
         
     return result
-=======
-"""FastAPI Backend API for Log-Fusion (ULPF) and Auto-Mapping Assistant."""
-
-import logging
-from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-
-from src.engine.pipeline import NormalizationPipeline
-from src.assistant.service import AutoMappingAssistant
-
-logger = logging.getLogger(__name__)
-
-pipeline: Optional[NormalizationPipeline] = None
-assistant: Optional[AutoMappingAssistant] = None
 
 
-def get_pipeline() -> NormalizationPipeline:
-    global pipeline
-    if pipeline is None:
-        pipeline = NormalizationPipeline()
-    return pipeline
-
-
-def get_assistant() -> AutoMappingAssistant:
-    global assistant
-    if assistant is None:
-        assistant = AutoMappingAssistant()
-    return assistant
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global pipeline, assistant
-    pipeline = get_pipeline()
-    assistant = get_assistant()
-    logger.info("ULPF Normalization Pipeline and Auto-Mapping Assistant initialized.")
-    yield
-
-
-app = FastAPI(
-    title="Log-Fusion (ULPF) Normalization & Auto-Mapping API",
-    description="Universal Log Pre-processing Framework with declarative YAML mapping and Auto-Mapping Assistant",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-# CORS middleware to support local frontend development
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class LineIn(BaseModel):
-    raw_line: str
-
-
-class AssistantAnalyzeRequest(BaseModel):
-    source_name: str = Field(..., description="Human-readable name of the log source (e.g. 'SonicWall Firewall')")
-    raw_lines: List[str] = Field(..., min_length=1, description="Sample raw log lines from the unknown device")
-    device_type: Optional[str] = Field(default=None, description="Optional device hint (firewall, ids, vpn, router, proxy)")
-    use_llm: Optional[bool] = Field(default=False, description="Enable local Ollama fallback for ambiguous fields")
-
-
-class AssistantSaveRequest(BaseModel):
-    source_name: str = Field(..., description="Source name used to slugify mapping directory")
-    yaml_content: str = Field(..., description="Complete YAML draft content")
-    raw_lines: List[str] = Field(..., description="Raw sample lines saved verbatim to synthetic_sample.log")
-
-
-@app.get("/health")
-async def health():
-    pipe = get_pipeline()
-    asst = get_assistant()
-    return {
-        "status": "ok",
-        "pipeline_loaded": pipe is not None,
-        "assistant_loaded": asst is not None,
-        "version": "1.0.0",
-    }
-
-
-# ==========================================
-# Core Ingestion Endpoints
-# ==========================================
-
-@app.post("/api/v1/ingest/line")
-async def ingest_line(payload: LineIn):
-    pipe = get_pipeline()
-    ev = pipe.process_line(payload.raw_line)
-    if not ev:
-        return {"status": "skipped_or_unrecognized"}
-    return {"status": "success", "uid": ev.get("metadata", {}).get("uid"), "event": ev}
-
-
-# ==========================================
+# -------------------------------------------------------------
 # Auto-Mapping Assistant Endpoints
-# ==========================================
+# -------------------------------------------------------------
 
 @app.post("/api/v1/assistant/analyze")
 async def analyze_unknown_log(payload: AssistantAnalyzeRequest):
@@ -324,4 +285,3 @@ async def approve_draft_mapping(slug: str):
     except Exception as e:
         logger.exception(f"Error approving draft mapping '{slug}'")
         raise HTTPException(status_code=400, detail=str(e))
->>>>>>> ca784012d76b211a85aa9ef347513c72897dbc2a

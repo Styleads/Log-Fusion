@@ -1,0 +1,15 @@
+services:
+  # Standalone Anomaly Detection Job Runner
+  anomaly-detection:
+    build: .
+    image: ulpf-anomaly-detection:latest
+    container_name: ulpf-anomaly-detection
+    volumes:
+      - ..:/data
+    networks:
+      - ulpf-network
+
+networks:
+  ulpf-network:
+    name: ulpf-network
+    driver: bridge

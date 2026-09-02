@@ -116,6 +116,20 @@ services:
     networks:
       - ulpf-network
 
+  # -------------------------------------------------------------
+  # 7. Mappings Schema Validator & Tester
+  # -------------------------------------------------------------
+  mappings-validator:
+    build:
+      context: .
+      dockerfile: mappings/Dockerfile
+    image: ulpf-mappings-validator:latest
+    container_name: ulpf-mappings-validator
+    volumes:
+      - ./mappings:/app/mappings
+    networks:
+      - ulpf-network
+
 # ---------------------------------------------------------------
 # Unified Network & Shared Volumes
 # ---------------------------------------------------------------
@@ -126,3 +140,4 @@ networks:
 
 volumes:
   opensearch-data:
+

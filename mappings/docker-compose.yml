@@ -1,0 +1,17 @@
+services:
+  # Standalone Mappings Validator Service
+  mappings-validator:
+    build:
+      context: ..
+      dockerfile: mappings/Dockerfile
+    image: ulpf-mappings-validator:latest
+    container_name: ulpf-mappings-validator
+    volumes:
+      - .:/app/mappings
+    networks:
+      - ulpf-network
+
+networks:
+  ulpf-network:
+    name: ulpf-network
+    driver: bridge

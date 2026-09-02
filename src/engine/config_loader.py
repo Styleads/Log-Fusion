@@ -173,6 +173,8 @@ class ConfigLoader:
         yaml_files = sorted(list(path.glob("**/*.yaml")) + list(path.glob("**/*.yml")))
 
         for file_path in yaml_files:
+            if file_path.name.startswith("docker-compose"):
+                continue
             try:
                 config = self.load_file(file_path)
                 self.configs.append(config)
@@ -181,6 +183,11 @@ class ConfigLoader:
                 print(f"[ConfigLoader] Warning: Skipping non-mapping file {file_path}: {e}")
 
         return self.configs
+
+    def get_all_configs(self) -> List[MappingConfig]:
+        """Return all loaded mapping configurations."""
+        return list(self.configs)
+
 
     def get_by_source(self, vendor: str, product: Optional[str] = None) -> Optional[MappingConfig]:
         """Find a configuration matching the given vendor and optional product."""

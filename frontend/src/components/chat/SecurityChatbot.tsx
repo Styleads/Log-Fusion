@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Bot, User, ShieldAlert, ArrowRight, ExternalLink, RefreshCw, Terminal } from 'lucide-react';
+import { Send, Sparkles, Bot, User, ShieldAlert, ArrowRight, ExternalLink, RefreshCw, Terminal, Cpu } from 'lucide-react';
 import { ChatMessage, ChatCitation } from '../../types/chat';
 import { OCSFEvent } from '../../types/ocsf';
 import { apiService } from '../../services/apiService';
@@ -16,6 +16,7 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
       id: 'welcome',
       sender: 'assistant',
       timestamp: new Date().toISOString(),
+      source: 'grounded_telemetry',
       text: `Hello! I am **Joi**, your LogFusion Security Assistant, grounded directly in the normalized OCSF event store (${events.length} active perimeter events).\n\nYou can ask me natural language threat hunting questions, anomaly queries, or cross-vendor correlation checks.`,
       suggestedFollowUps: [
         'Any repeated SSH scans from 185.220.101.4?',
@@ -62,6 +63,7 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
           id: `err-${Date.now()}`,
           sender: 'assistant',
           timestamp: new Date().toISOString(),
+          source: 'grounded_telemetry',
           text: `⚠️ Unable to process query against backend. Grounded in-memory analysis fallback error: ${err}`
         }
       ]);
@@ -108,6 +110,7 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
                 id: `reset-${Date.now()}`,
                 sender: 'assistant',
                 timestamp: new Date().toISOString(),
+                source: 'grounded_telemetry',
                 text: 'Chat history cleared. Grounded query engine ready.',
                 suggestedFollowUps: [
                   'Any repeated SSH scans from 185.220.101.4?',
@@ -147,6 +150,23 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
 
               {/* Message Bubble */}
               <div className={`max-w-[85%] sm:max-w-[75%] space-y-2.5 ${isUser ? 'items-end' : 'items-start'}`}>
+                {/* Source Badge for Assistant Messages */}
+                {!isUser && msg.source && (
+                  <div className="flex items-center gap-1.5 pb-0.5">
+                    {msg.source === 'ollama_llm' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-700/50">
+                        <Bot className="w-3 h-3 text-emerald-400" />
+                        <span>Ollama LLM (phi4-mini)</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-indigo-950/80 text-indigo-300 border border-indigo-700/50">
+                        <Cpu className="w-3 h-3 text-indigo-400" />
+                        <span>Grounded Telemetry Engine</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <div
                   className={`p-3.5 sm:p-4 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-md ${
                     isUser

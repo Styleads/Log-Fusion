@@ -254,13 +254,13 @@ class ApiService {
     if (!this.useMockOnly) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
         const res = await fetch(`${ENGINE_API_BASE}/api/v1/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: userText,
-            context_events: currentEvents.slice(0, 50)
+            context_events: currentEvents
           }),
           signal: controller.signal
         });
@@ -273,6 +273,7 @@ class ApiService {
             sender: 'assistant',
             timestamp: new Date().toISOString(),
             text: reply.text || reply.answer,
+            source: reply.source || 'grounded_telemetry',
             citations: reply.citations || [],
             structuredData: reply.structuredData
           };

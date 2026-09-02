@@ -51,10 +51,14 @@ services:
     container_name: ulpf-engine-api
     depends_on:
       - storage-api
+      - ollama
     environment:
       - STORAGE_API_URL=http://storage-api:8000
+      - OLLAMA_BASE_URL=http://ollama:11434
       - MAPPINGS_DIR=/app/mappings
       - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8001:8001"
     volumes:
@@ -82,17 +86,55 @@ services:
       - ulpf-network
 
   # -------------------------------------------------------------
-  # 5. RAG Chatbot Service (Interactive / LangGraph)
+  # 5. Self-Hosted Ollama AI LLM Engine
+  # -------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ulpf-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - ulpf-network
+
+  # -------------------------------------------------------------
+  # 6. Automated Model Puller (phi4-mini & nomic-embed-text)
+  # -------------------------------------------------------------
+  ollama-pull:
+    image: curlimages/curl:latest
+    container_name: ulpf-ollama-pull
+    depends_on:
+      - ollama
+    entrypoint: >
+      sh -c "
+      echo 'Waiting for Ollama container to start...';
+      until curl -s http://ollama:11434/api/tags > /dev/null; do sleep 2; done;
+      echo 'Pulling phi4-mini reasoning model...';
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"phi4-mini\"}';
+      echo 'Pulling nomic-embed-text embedding model...';
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}';
+      echo 'All Ollama models downloaded and ready!';
+      "
+    restart: "no"
+    networks:
+      - ulpf-network
+
+  # -------------------------------------------------------------
+  # 7. RAG Chatbot Service (Interactive / LangGraph)
   # -------------------------------------------------------------
   rag-chatbot:
     build:
       context: ./rag_chatbots
     image: ulpf-rag-chatbot:latest
     container_name: ulpf-rag-chatbot
+    depends_on:
+      - ollama
     stdin_open: true
     tty: true
     environment:
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app/src
     extra_hosts:
@@ -104,7 +146,7 @@ services:
       - ulpf-network
 
   # -------------------------------------------------------------
-  # 6. Anomaly Detection Analytics Engine (Job / CLI)
+  # 8. Anomaly Detection Analytics Engine (Job / CLI)
   # -------------------------------------------------------------
   anomaly-detection:
     build:
@@ -117,7 +159,7 @@ services:
       - ulpf-network
 
   # -------------------------------------------------------------
-  # 7. Mappings Schema Validator & Tester
+  # 9. Mappings Schema Validator & Tester
   # -------------------------------------------------------------
   mappings-validator:
     build:
@@ -140,4 +182,5 @@ networks:
 
 volumes:
   opensearch-data:
+  ollama-data:
 

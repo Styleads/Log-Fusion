@@ -16,6 +16,7 @@ export interface ChatMessage {
   sender: 'user' | 'assistant' | 'system';
   timestamp: string;
   text: string;
+  source?: 'ollama_llm' | 'grounded_telemetry' | 'in_memory_rag';
   citations?: ChatCitation[];
   highlightedEvents?: OCSFEvent[];
   structuredData?: {

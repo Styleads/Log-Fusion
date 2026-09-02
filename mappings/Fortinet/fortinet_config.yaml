@@ -1,0 +1,85 @@
+# Mapping config: Fortinet FortiGate UTM / Firewall (FortiOS)
+# Format: key-value / syslog format
+
+source_identity:
+  vendor: "Fortinet"
+  product: "FortiOS"
+  format: "kv"
+  version: "7.0"
+
+# ---- detection: how the engine recognizes Fortinet logs ----
+detection:
+  method: "field_presence"
+  fields:
+    - "devname"
+    - "logid"
+
+# ---- parsing ----
+parsing:
+  format: "kv"
+  delimiter: " "
+
+# ---- classification ----
+classification:
+  default_class_uid: 4001
+  default_class_name: "Network Activity"
+  rules:
+    - when: { action: "accept" }
+      class_uid: 4001
+      activity_id: 1
+      activity_name: "Allow"
+    - when: { action: "deny" }
+      class_uid: 4001
+      activity_id: 6
+      activity_name: "Deny"
+    - when: { action: "close" }
+      class_uid: 4001
+      activity_id: 3
+      activity_name: "Close"
+
+# ---- field_map: parsed raw field -> dotted OCSF path ----
+field_map:
+  srcip: "src_endpoint.ip"
+  srcport: "src_endpoint.port"
+  dstip: "dst_endpoint.ip"
+  dstport: "dst_endpoint.port"
+  srcintf: "src_endpoint.interface"
+  dstintf: "dst_endpoint.interface"
+  policyname: "firewall_rule.name"
+  devname: "device.name"
+  action: "activity_name"
+  sentbyte: "src_endpoint.bytes"
+  rcvdbyte: "dst_endpoint.bytes"
+
+# ---- static_fields ----
+static_fields:
+  "device.vendor_name": "Fortinet"
+  "device.type": "Firewall"
+  "metadata.product.vendor_name": "Fortinet"
+  "metadata.product.name": "FortiOS"
+
+# ---- transforms ----
+transforms:
+  proto:
+    type: "lookup"
+    table:
+      "6": "TCP"
+      "17": "UDP"
+      "1": "ICMP"
+    target: "connection_info.protocol_name"
+
+# ---- timestamp ----
+timestamp:
+  source_field: "date+time"
+  format: "%Y-%m-%d %H:%M:%S"
+  timezone: "local"
+
+# ---- unmapped_policy ----
+unmapped_policy:
+  action: "bucket"
+  target: "unmapped"
+
+# ---- raw_preservation ----
+raw_preservation:
+  enabled: true
+  target_field: "raw_data"

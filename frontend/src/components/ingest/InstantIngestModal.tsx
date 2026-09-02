@@ -6,7 +6,7 @@ import { OCSFEvent } from '../../types/ocsf';
 interface InstantIngestModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onEventIngested: (event: OCSFEvent) => void;
+  onEventIngested: (event: OCSFEvent | OCSFEvent[]) => void;
   onOpenDrilldown: (event: OCSFEvent) => void;
 }
 
@@ -51,7 +51,6 @@ export const InstantIngestModal: React.FC<InstantIngestModalProps> = ({
           <LiveIngestLab
             onEventIngested={(e) => {
               onEventIngested(e);
-              onClose();
             }}
             onOpenDrilldown={(e) => {
               onClose();

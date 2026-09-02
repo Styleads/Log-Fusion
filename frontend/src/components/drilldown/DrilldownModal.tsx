@@ -17,16 +17,19 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
 
   if (!event) return null;
 
+  const rawFormatStr = (event.raw_format || 'raw').toUpperCase();
+  const rawDataStr = event.raw_data || (typeof event === 'object' ? JSON.stringify(event, null, 2) : '');
+
   // Generate dynamic lineage from event fields
   const lineage: FieldMappingLineage[] = [
-    { raw_field: 'Source IP', raw_value: event.src_endpoint?.ip || '', ocsf_path: 'src_endpoint.ip', status: 'mapped' },
+    { raw_field: 'Source IP', raw_value: event.src_endpoint?.ip || '—', ocsf_path: 'src_endpoint.ip', status: 'mapped' },
     { raw_field: 'Source Port', raw_value: event.src_endpoint?.port ?? '—', ocsf_path: 'src_endpoint.port', status: 'mapped' },
-    { raw_field: 'Dest IP', raw_value: event.dst_endpoint?.ip || '', ocsf_path: 'dst_endpoint.ip', status: 'mapped' },
+    { raw_field: 'Dest IP', raw_value: event.dst_endpoint?.ip || '—', ocsf_path: 'dst_endpoint.ip', status: 'mapped' },
     { raw_field: 'Dest Port', raw_value: event.dst_endpoint?.port ?? '—', ocsf_path: 'dst_endpoint.port', status: 'mapped' },
-    { raw_field: 'Protocol', raw_value: event.connection_info?.protocol_name || '', ocsf_path: 'connection_info.protocol_name', status: 'transformed' },
-    { raw_field: 'Action / Status', raw_value: event.activity_name || '', ocsf_path: 'activity_name / activity_id', status: 'transformed' },
-    { raw_field: 'Device Hostname', raw_value: event.device?.name || '', ocsf_path: 'device.name', status: 'mapped' },
-    { raw_field: 'Vendor', raw_value: event.device?.vendor_name || event.source_vendor, ocsf_path: 'device.vendor_name', status: 'static' }
+    { raw_field: 'Protocol', raw_value: event.connection_info?.protocol_name || '—', ocsf_path: 'connection_info.protocol_name', status: 'transformed' },
+    { raw_field: 'Action / Status', raw_value: event.activity_name || '—', ocsf_path: 'activity_name / activity_id', status: 'transformed' },
+    { raw_field: 'Device Hostname', raw_value: event.device?.name || '—', ocsf_path: 'device.name', status: 'mapped' },
+    { raw_field: 'Vendor', raw_value: event.device?.vendor_name || event.source_vendor || '—', ocsf_path: 'device.vendor_name', status: 'static' }
   ];
 
   if (event.firewall_rule?.name) {
@@ -47,7 +50,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
   }
 
   const handleCopyRaw = () => {
-    navigator.clipboard.writeText(event.raw_data);
+    navigator.clipboard.writeText(rawDataStr);
     setCopiedRaw(true);
     setTimeout(() => setCopiedRaw(false), 2000);
   };
@@ -74,7 +77,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
                   Event Drill-Down & Forensic Traceability
                 </h3>
                 <Badge variant={event.class_name === 'Detection Finding' ? 'detection' : 'network'} size="sm">
-                  {event.class_name} ({event.class_uid})
+                  {event.class_name || 'Network Activity'} ({event.class_uid || 4001})
                 </Badge>
               </div>
               
@@ -82,7 +85,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
               <div className="flex items-center gap-2 mt-1 text-xs">
                 <span className="text-slate-400 font-mono">Shared Event UID:</span>
                 <span className="font-mono text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
-                  {event.event_uid}
+                  {event.event_uid || 'N/A'}
                 </span>
                 <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold ml-2">
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -94,7 +97,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
 
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -105,7 +108,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('side-by-side')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'side-by-side'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
@@ -117,7 +120,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
 
             <button
               onClick={() => setActiveTab('lineage')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'lineage'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
@@ -129,7 +132,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
 
             <button
               onClick={() => setActiveTab('unmapped')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'unmapped'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
@@ -141,7 +144,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
 
             <button
               onClick={() => setActiveTab('json')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'json'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
@@ -155,14 +158,14 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopyRaw}
-              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-mono bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-mono bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
             >
               {copiedRaw ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
               <span>{copiedRaw ? 'Copied Raw' : 'Copy Raw'}</span>
             </button>
             <button
               onClick={handleCopyJSON}
-              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-mono bg-cyan-950/60 text-cyan-300 hover:text-white border border-cyan-800/60 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-mono bg-cyan-950/60 text-cyan-300 hover:text-white border border-cyan-800/60 transition-colors cursor-pointer"
             >
               {copiedJSON ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
               <span>{copiedJSON ? 'Copied JSON' : 'Copy OCSF JSON'}</span>
@@ -182,14 +185,14 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                    Original Raw Log Stream ({event.raw_format.toUpperCase()})
+                    Original Raw Log Stream ({rawFormatStr})
                   </span>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    {event.raw_data.length} bytes · untouched
+                    {(typeof rawDataStr === 'string' ? rawDataStr : JSON.stringify(rawDataStr)).length} bytes · untouched
                   </span>
                 </div>
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-amber-200/90 whitespace-pre-wrap break-all leading-relaxed shadow-inner max-h-[460px] overflow-y-auto">
-                  {event.raw_data}
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-amber-200/90 whitespace-pre-wrap break-all leading-relaxed shadow-inner max-h-[460px] overflow-y-auto select-text">
+                  {typeof rawDataStr === 'string' ? rawDataStr : JSON.stringify(rawDataStr, null, 2)}
                 </div>
               </div>
 
@@ -201,10 +204,10 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
                     Normalized OCSF v1.1.0 JSON Document
                   </span>
                   <span className="text-[11px] text-cyan-400 font-mono">
-                    OCSF Class {event.class_uid}
+                    OCSF Class {event.class_uid || 4001}
                   </span>
                 </div>
-                <div className="p-4 rounded-xl bg-slate-950 border border-cyan-900/40 font-mono text-xs text-cyan-100/90 whitespace-pre leading-relaxed shadow-inner max-h-[460px] overflow-y-auto">
+                <div className="p-4 rounded-xl bg-slate-950 border border-cyan-900/40 font-mono text-xs text-cyan-100/90 whitespace-pre leading-relaxed shadow-inner max-h-[460px] overflow-y-auto select-text">
                   {JSON.stringify(event, null, 2)}
                 </div>
               </div>
@@ -215,7 +218,7 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
           {/* TAB 2: FIELD LINEAGE TABLE */}
           {activeTab === 'lineage' && (
             <div className="space-y-3">
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 font-mono">
                 Detailed field extraction, schema alignment, and value translation mapping from raw perimeter format into OCSF v1.1.0 taxonomy.
               </p>
               <FieldLineageTable lineage={lineage} />
@@ -224,12 +227,12 @@ export const DrilldownModal: React.FC<DrilldownModalProps> = ({ event, onClose }
 
           {/* TAB 3: UNMAPPED BUCKET */}
           {activeTab === 'unmapped' && (
-            <UnmappedInspector unmapped={event.unmapped} rawFormat={event.raw_format} />
+            <UnmappedInspector unmapped={event.unmapped} rawFormat={event.raw_format || 'csv'} />
           )}
 
           {/* TAB 4: OCSF JSON ONLY */}
           {activeTab === 'json' && (
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-cyan-200/90 whitespace-pre overflow-x-auto">
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-cyan-200/90 whitespace-pre overflow-x-auto select-text">
               {JSON.stringify(event, null, 2)}
             </div>
           )}

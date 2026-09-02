@@ -14,12 +14,14 @@ import {
   ArrowRight,
   ShieldCheck,
   Copy,
-  Download
+  Download,
+  BarChart2
 } from 'lucide-react';
-import { SAMPLE_RAW_LOGS, SampleLogItem } from '../../data/sampleRawLogs';
+import { SAMPLE_RAW_LOGS } from '../../data/sampleRawLogs';
 import { PRESET_UNKNOWN_SAMPLES } from '../../data/presetSamples';
 import { processRawLog } from '../../services/ocsfEngine';
 import { assistantService } from '../../services/assistantService';
+import { apiService } from '../../services/apiService';
 import { NormalizationPipelineOutput } from '../../types/events';
 import { OCSFEvent } from '../../types/ocsf';
 import { AssistantAnalysisData } from '../../types/assistant';
@@ -28,7 +30,7 @@ import { FieldLineageTable } from '../drilldown/FieldLineageTable';
 import { Badge } from '../common/Badge';
 
 interface LiveIngestLabProps {
-  onEventIngested: (event: OCSFEvent) => void;
+  onEventIngested: (event: OCSFEvent | OCSFEvent[]) => void;
   onOpenDrilldown: (event: OCSFEvent) => void;
 }
 
@@ -45,10 +47,16 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
   // Processing State
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [pipelineOutput, setPipelineOutput] = useState<NormalizationPipelineOutput | null>(null);
+  const [normalizedBatch, setNormalizedBatch] = useState<OCSFEvent[]>([]);
   const [assistantOutput, setAssistantOutput] = useState<AssistantAnalysisData | null>(null);
   const [isUnknownFormat, setIsUnknownFormat] = useState<boolean>(false);
-  const [recentlyAdded, setRecentlyAdded] = useState<boolean>(false);
+  const [statusNotification, setStatusNotification] = useState<string | null>(null);
   const [approvedSlug, setApprovedSlug] = useState<string | null>(null);
+
+  const showStatus = (msg: string) => {
+    setStatusNotification(msg);
+    setTimeout(() => setStatusNotification(null), 5000);
+  };
 
   // Handle Drag & Drop File Upload
   const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -73,6 +81,7 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
       if (content) {
         setRawInput(content);
         setPipelineOutput(null);
+        setNormalizedBatch([]);
         setAssistantOutput(null);
         setIsUnknownFormat(false);
       }
@@ -84,35 +93,69 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
     setFileName(name);
     setRawInput(raw);
     setPipelineOutput(null);
+    setNormalizedBatch([]);
     setAssistantOutput(null);
     setIsUnknownFormat(false);
   };
 
-  // Run Automatic Identification & Pipeline Execution
+  // Run Universal Log Pipeline Across Entire Uploaded File
   const handleExecutePipeline = async () => {
     if (!rawInput.trim()) return;
     setIsProcessing(true);
     setPipelineOutput(null);
+    setNormalizedBatch([]);
     setAssistantOutput(null);
     setIsUnknownFormat(false);
-    setRecentlyAdded(false);
 
-    // 1. First run core pipeline to check if format matches known vendor
-    const lines = rawInput.split('\n').filter((l) => l.trim());
-    const firstLine = lines[0] || rawInput;
+    try {
+      const lines = rawInput.split('\n').filter((l) => l.trim());
+      if (lines.length === 0) return;
 
-    const output = processRawLog(firstLine);
+      // 1. Ingest batch through live backend API (or local engine fallback)
+      const batchEvents = await apiService.ingestBatch(lines);
 
-    if (output.matchedConfig && output.matchedConfig !== 'Unknown' && output.normalizedEvent) {
-      // Known Vendor Matched!
-      setTimeout(() => {
-        setPipelineOutput(output);
+      if (batchEvents.length > 0) {
+        const firstEv = batchEvents[0];
+        const localPreview = processRawLog(firstEv.raw_data || lines[0]);
+        const finalPreview: NormalizationPipelineOutput = (localPreview && localPreview.success && localPreview.normalizedEvent) ? {
+          ...localPreview,
+          normalizedEvent: firstEv
+        } : {
+          event_uid: firstEv.event_uid,
+          success: true,
+          matchedConfig: firstEv.processing_metadata?.matched_config || `${firstEv.source_vendor || 'Vendor'} Config`,
+          matchedVendor: firstEv.source_vendor || firstEv.device?.vendor_name || 'Security Vendor',
+          matchedProduct: firstEv.source_product || firstEv.device?.name || 'Device',
+          stages: [
+            { stage: 'ingest', name: 'Ingest Raw Stream', status: 'success', durationMs: 0.1, details: { bytes: (firstEv.raw_data || '').length, encoding: 'UTF-8' } },
+            { stage: 'detect', name: 'Vendor Auto-Detection', status: 'success', durationMs: 0.2, details: { vendor: firstEv.source_vendor || 'Vendor', matched_rule: firstEv.processing_metadata?.matched_config || 'matched.yaml' } },
+            { stage: 'parse', name: 'Grammar Parsing', status: 'success', durationMs: 0.3, details: { format: firstEv.raw_format || 'delimited' } },
+            { stage: 'classify', name: 'OCSF Taxonomy Classification', status: 'success', durationMs: 0.1, details: { target_class: firstEv.class_name, class_uid: firstEv.class_uid } },
+            { stage: 'map', name: 'Dotted Schema Mapping', status: 'success', durationMs: 0.2, details: { ocsf_class: firstEv.class_name } },
+            { stage: 'preserve', name: 'Lossless Audit Preservation', status: 'success', durationMs: 0.1, details: { uuid_stamped: firstEv.event_uid, raw_preserved: true } }
+          ],
+          normalizedEvent: firstEv,
+          lineage: [
+            { raw_field: 'Source IP', raw_value: firstEv.src_endpoint?.ip || '—', ocsf_path: 'src_endpoint.ip', status: 'mapped' },
+            { raw_field: 'Source Port', raw_value: firstEv.src_endpoint?.port ?? '—', ocsf_path: 'src_endpoint.port', status: 'mapped' },
+            { raw_field: 'Dest IP', raw_value: firstEv.dst_endpoint?.ip || '—', ocsf_path: 'dst_endpoint.ip', status: 'mapped' },
+            { raw_field: 'Dest Port', raw_value: firstEv.dst_endpoint?.port ?? '—', ocsf_path: 'dst_endpoint.port', status: 'mapped' },
+            { raw_field: 'Protocol', raw_value: firstEv.connection_info?.protocol_name || '—', ocsf_path: 'connection_info.protocol_name', status: 'mapped' },
+            { raw_field: 'Action', raw_value: firstEv.activity_name || '—', ocsf_path: 'activity_name', status: 'transformed' },
+            { raw_field: 'Device Name', raw_value: firstEv.device?.name || '—', ocsf_path: 'device.name', status: 'mapped' }
+          ],
+          totalDurationMs: firstEv.processing_metadata?.parser_time_ms || 1.2
+        };
+
+        setPipelineOutput(finalPreview);
+        setNormalizedBatch(batchEvents);
         setIsUnknownFormat(false);
-        setIsProcessing(false);
-      }, 400);
-    } else {
-      // Unknown Vendor Format -> Auto-Trigger Assistant!
-      try {
+
+        // Push to SOC Dashboard
+        onEventIngested(batchEvents);
+        showStatus(`✅ Successfully normalized ${batchEvents.length} OCSF events from ${fileName} and updated live SOC Dashboard!`);
+      } else {
+        // Unknown format -> trigger Auto-Mapping Assistant
         const sourceLabel = fileName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, ' ') || 'Unknown Device';
         const analysis = await assistantService.analyzeLogs(
           sourceLabel,
@@ -120,16 +163,15 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
           'firewall',
           false
         );
-
-        setTimeout(() => {
-          setAssistantOutput(analysis);
-          setIsUnknownFormat(true);
-          setIsProcessing(false);
-        }, 400);
-      } catch (err) {
-        console.error('Assistant analysis failed:', err);
-        setIsProcessing(false);
+        setAssistantOutput(analysis);
+        setIsUnknownFormat(true);
+        showStatus(`🪄 Unknown format detected! Auto-Mapping Assistant generated a draft YAML configuration for ${sourceLabel}.`);
       }
+    } catch (err) {
+      console.error('Pipeline execution error:', err);
+      showStatus('⚠️ Pipeline execution error.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -138,24 +180,32 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
       await assistantService.approveDraft(slug);
       setApprovedSlug(slug);
       if (assistantOutput?.ocsf_preview?.[0]) {
-        onEventIngested(assistantOutput.ocsf_preview[0]);
-        setRecentlyAdded(true);
+        onEventIngested(assistantOutput.ocsf_preview);
+        showStatus(`✅ Approved draft mapping! Flipped status to "reviewed" & updated SOC Dashboard.`);
       }
     } catch (err) {
       console.error('Failed to approve draft:', err);
     }
   };
 
-  const handleAddToLiveFeed = () => {
-    if (pipelineOutput?.normalizedEvent) {
-      onEventIngested(pipelineOutput.normalizedEvent);
-      setRecentlyAdded(true);
-      setTimeout(() => setRecentlyAdded(false), 3000);
-    }
-  };
-
   return (
     <div className="space-y-6">
+      {/* Status Notification Banner */}
+      {statusNotification && (
+        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-cyan-950 border border-emerald-500/40 rounded-xl px-4 py-3 text-emerald-200 text-xs font-mono flex items-center justify-between shadow-lg animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{statusNotification}</span>
+          </div>
+          <button
+            onClick={() => setStatusNotification(null)}
+            className="text-slate-400 hover:text-white text-xs font-bold px-2 py-0.5 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Drag & Drop File Upload Zone */}
       <div
         onDragOver={(e) => {
@@ -203,7 +253,9 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
             <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-cyan-300">
               <FileText className="w-3.5 h-3.5" />
               <span>{fileName}</span>
-              <span className="text-slate-500 text-[10px]">({rawInput.length} chars)</span>
+              <span className="text-slate-500 text-[10px]">
+                ({rawInput.split('\n').filter((l) => l.trim()).length} log lines)
+              </span>
             </div>
           )}
         </div>
@@ -213,7 +265,7 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
       <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-800">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-mono">
-            Or select sample payload:
+            Or test preset log file:
           </label>
           <div className="flex flex-wrap gap-2">
             {SAMPLE_RAW_LOGS.map((sample) => (
@@ -256,7 +308,7 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
             {isProcessing ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Identifying & Normalizing...</span>
+                <span>Identifying & Normalizing File...</span>
               </>
             ) : (
               <>
@@ -298,18 +350,18 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
 
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Vendor Name:</span>
+                  <span className="text-slate-400">Matched Vendor:</span>
                   <span className="text-cyan-300 font-semibold">{pipelineOutput.matchedVendor}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Total Normalized Events:</span>
+                  <span className="text-emerald-400 font-semibold">{normalizedBatch.length} events</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Target OCSF Class:</span>
                   <span className="text-purple-300 font-semibold">
                     {pipelineOutput.normalizedEvent?.class_name} ({pipelineOutput.normalizedEvent?.class_uid})
                   </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Processing Latency:</span>
-                  <span className="text-emerald-400 font-semibold">{pipelineOutput.totalDurationMs} ms</span>
                 </div>
               </div>
 
@@ -323,39 +375,28 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-purple-400" />
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">
-                      Normalized OCSF Document
+                      Normalized OCSF Document Preview
                     </h4>
                   </div>
-                  <span className="text-[11px] font-mono text-cyan-400">
-                    UUID: {pipelineOutput.event_uid.substring(0, 8)}...
+                  <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1 font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Pushed to SOC Dashboard Feed</span>
                   </span>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-950 border border-cyan-900/40 font-mono text-xs text-cyan-200/90 whitespace-pre overflow-y-auto max-h-[340px] shadow-inner">
+                <div className="p-4 rounded-xl bg-slate-950 border border-cyan-900/40 font-mono text-xs text-cyan-200/90 whitespace-pre overflow-y-auto max-h-[340px] shadow-inner select-text">
                   {JSON.stringify(pipelineOutput.normalizedEvent, null, 2)}
                 </div>
               </div>
 
               <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={handleAddToLiveFeed}
-                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition-all ${
-                    recentlyAdded
-                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                      : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/30'
-                  }`}
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{recentlyAdded ? 'Added to Live Feed!' : 'Add Event to Live Feed'}</span>
-                </button>
-
                 {pipelineOutput.normalizedEvent && (
                   <button
                     onClick={() => onOpenDrilldown(pipelineOutput.normalizedEvent!)}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/30 transition-all cursor-pointer"
                   >
-                    <Eye className="w-4 h-4 text-cyan-400" />
-                    <span>Forensic View</span>
+                    <Eye className="w-4 h-4 text-white" />
+                    <span>Inspect Forensic Side-by-Side View</span>
                   </button>
                 )}
               </div>

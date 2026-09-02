@@ -31,7 +31,7 @@ export const App: React.FC = () => {
     url: 'http://localhost:8000 (Mock Mode)',
     lastChecked: new Date().toISOString()
   });
-  const [mockMode, setMockMode] = useState<boolean>(true);
+  const [mockMode, setMockMode] = useState<boolean>(false);
 
   // Modals & Drawers
   const [selectedEvent, setSelectedEvent] = useState<OCSFEvent | null>(null);
@@ -258,8 +258,12 @@ export const App: React.FC = () => {
     setEvents(fresh);
   };
 
-  const handleEventIngested = (newEvent: OCSFEvent) => {
-    setEvents(prev => [newEvent, ...prev]);
+  const handleEventIngested = (newEvent: OCSFEvent | OCSFEvent[]) => {
+    if (Array.isArray(newEvent)) {
+      setEvents(prev => [...newEvent, ...prev]);
+    } else {
+      setEvents(prev => [newEvent, ...prev]);
+    }
   };
 
   const handleMarkAllRead = () => {

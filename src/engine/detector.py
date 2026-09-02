@@ -166,6 +166,11 @@ class LogDetector:
             if header_field and header_field in row:
                 return True
 
+        # Check if line matches expected equals condition values (e.g. 'TRAFFIC')
+        for cond in conditions:
+            if "equals" in cond and str(cond["equals"]).lower() in [c.lower() for c in row]:
+                return True
+
         # Or check parsing.fields header mapping if present
         parsing_fields = config.parsing.get("fields", {})
         if isinstance(parsing_fields, dict):

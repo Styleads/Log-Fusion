@@ -3,6 +3,7 @@
 import os
 import json
 import logging
+import urllib.parse
 import urllib.request
 import urllib.error
 from typing import Any, Dict, List, Optional
@@ -19,8 +20,13 @@ class OllamaFallback:
         model: str = "phi4-mini",
         timeout: float = 2.0,
     ):
-        self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-        self.endpoint = endpoint or f"{self.base_url}/api/generate"
+        if endpoint:
+            self.endpoint = endpoint
+            parsed = urllib.parse.urlparse(endpoint)
+            self.base_url = f"{parsed.scheme}://{parsed.netloc}"
+        else:
+            self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+            self.endpoint = f"{self.base_url}/api/generate"
         self.model = model
         self.timeout = timeout
 
@@ -36,7 +42,6 @@ class OllamaFallback:
                 return resp.status == 200
         except Exception:
             return False
-
 
     def suggest_mappings(
         self,
@@ -58,10 +63,9 @@ class OllamaFallback:
             "suggest the appropriate dotted OCSF path (e.g., 'src_endpoint.ip', 'dst_endpoint.port', "
             "'traffic.bytes', 'user.name', 'firewall_rule.name', 'finding_info.title', or 'unmapped') "
             "for each ambiguous field. Return ONLY a valid JSON object mapping each field name to its OCSF path.\n\n"
-            f"Log Samples:\n" + "\n".join(raw_samples[:3]) + "\n\n"
-            f"Ambiguous Fields: {json.dumps(ambiguous_fields)}\n"
-            f"Already Mapped Fields: {json.dumps(known_mappings)}\n\n"
-            "JSON Response:"
+            f"Known mappings already identified: {json.dumps(known_mappings)}\n"
+            f"Ambiguous fields needing labels: {json.dumps(ambiguous_fields)}\n"
+            f"Raw log sample lines:\n" + "\n".join(raw_samples[:5])
         )
 
         payload = {
@@ -72,26 +76,27 @@ class OllamaFallback:
         }
 
         try:
-            req_data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
                 self.endpoint,
-                data=req_data,
-                headers={"Content-Type": "application/json", "User-Agent": "ULPF-AutoMapping/1.0"},
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "ULPF-AutoMapping/1.0",
+                },
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 if resp.status == 200:
-                    resp_body = json.loads(resp.read().decode("utf-8"))
-                    raw_response = resp_body.get("response", "{}")
-                    parsed_json = json.loads(raw_response)
+                    body = json.loads(resp.read().decode("utf-8"))
+                    response_text = body.get("response", "{}")
+                    parsed_json = json.loads(response_text)
                     if isinstance(parsed_json, dict):
-                        # Filter out fields mapped to 'unmapped' or non-strings
                         return {
-                            k: v for k, v in parsed_json.items()
-                            if isinstance(v, str) and v != "unmapped" and "." in v
+                            str(k): str(v)
+                            for k, v in parsed_json.items()
+                            if k in ambiguous_fields
                         }
         except Exception as e:
-            logger.debug(f"[OllamaFallback] Local Ollama fallback unavailable or skipped: {e}")
+            logger.debug(f"Ollama fallback unavailable or timed out: {e}")
 
-        # Graceful degradation
         return {}

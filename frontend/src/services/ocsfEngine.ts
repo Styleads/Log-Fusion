@@ -21,7 +21,6 @@ export function generateUUID(): string {
  */
 function parseKeyValueString(raw: string): Record<string, string> {
   const result: Record<string, string> = {};
-  // Regex to match key=value or key="quoted value"
   const regex = /([a-zA-Z0-9_-]+)=(?:"([^"]*)"|'([^']*)'|([^\s]+))/g;
   let match;
   while ((match = regex.exec(raw)) !== null) {
@@ -34,13 +33,6 @@ function parseKeyValueString(raw: string): Record<string, string> {
 
 /**
  * ULPF Client-Side Normalization Pipeline Engine
- * Executes the exact 6-stage pipeline:
- * 1. Ingest
- * 2. Detect (matches YAML mapping config)
- * 3. Parse (CSV, JSON, KV, Syslog regex)
- * 4. Classify (Network Activity 4001 / Detection Finding 2004)
- * 5. Map & Transform (OCSF nested path mapping + value conversions)
- * 6. Preserve & Store (Shared UUID, unmapped bucket, raw string attachment)
  */
 export function processRawLog(rawInput: string): NormalizationPipelineOutput {
   const startTime = performance.now();
@@ -48,7 +40,8 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
   const event_uid = generateUUID();
   const rawText = rawInput.trim();
 
-  if (!rawText) {
+  // Skip empty lines or header comments starting with #
+  if (!rawText || rawText.startsWith('#')) {
     return {
       event_uid,
       success: false,
@@ -56,11 +49,11 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
         stage: 'ingest',
         name: 'Log Ingestion',
         status: 'error',
-        details: { message: 'Empty input log line provided' }
+        details: { message: rawText.startsWith('#') ? 'Skipping header comment line' : 'Empty input log line' }
       }],
       lineage: [],
       totalDurationMs: 0,
-      error: 'Empty log provided'
+      error: rawText.startsWith('#') ? 'Header comment line' : 'Empty log provided'
     };
   }
 
@@ -82,8 +75,13 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
   const t1 = performance.now();
   let matchedConfig: VendorYAMLConfig | null = null;
 
+  // Check Windows Firewall (space-delimited: date time DROP/ALLOW TCP/UDP/ICMP)
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+(DROP|ALLOW)\s+(TCP|UDP|ICMP)/i.test(rawText)) {
+    matchedConfig = VENDOR_YAML_CONFIGS.find(c => c.id === 'windows-firewall') || null;
+  }
+
   // Check JSON format (e.g. Suricata)
-  if (rawText.startsWith('{') && rawText.endsWith('}')) {
+  if (!matchedConfig && rawText.startsWith('{') && rawText.endsWith('}')) {
     try {
       const parsed = JSON.parse(rawText);
       if (parsed.event_type || parsed.alert || parsed.proto) {
@@ -100,7 +98,7 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
   }
 
   // Check Palo Alto CSV
-  if (!matchedConfig && (rawText.includes(',traffic,TRAFFIC,') || rawText.includes(',THREAT,') || rawText.includes(',traffic,'))) {
+  if (!matchedConfig && (rawText.includes(',traffic,TRAFFIC,') || rawText.includes(',THREAT,') || (rawText.includes(',') && rawText.includes('TRAFFIC')))) {
     matchedConfig = VENDOR_YAML_CONFIGS.find(c => c.id === 'paloalto-panos') || null;
   }
 
@@ -109,13 +107,16 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
     matchedConfig = VENDOR_YAML_CONFIGS.find(c => c.id === 'fortinet-fortios') || null;
   }
 
-  // Fallback default
+  // If no known vendor matches, do NOT default to Palo Alto! Return null so Assistant handles it.
   if (!matchedConfig) {
-    if (rawText.includes(',')) {
-      matchedConfig = VENDOR_YAML_CONFIGS.find(c => c.id === 'paloalto-panos') || VENDOR_YAML_CONFIGS[0];
-    } else {
-      matchedConfig = VENDOR_YAML_CONFIGS[0];
-    }
+    return {
+      event_uid,
+      success: false,
+      stages,
+      lineage: [],
+      totalDurationMs: Number((performance.now() - startTime).toFixed(2)),
+      error: 'Unrecognized format - Auto-Mapping Assistant required'
+    };
   }
 
   stages.push({
@@ -138,10 +139,45 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
   const lineage: FieldMappingLineage[] = [];
   const unmapped: Record<string, any> = {};
 
-  if (matchedConfig.id === 'paloalto-panos') {
-    const cols = rawText.split(',');
-    // Section 3 Example A: Palo Alto mapping
-    extracted['time'] = cols[1] ? new Date(cols[1].replace(/\//g, '-')).toISOString() : new Date().toISOString();
+  if (matchedConfig.id === 'windows-firewall') {
+    const cols = rawText.split(/\s+/);
+    extracted['time'] = `${cols[0]}T${cols[1]}Z`;
+    extracted['action'] = (cols[2] || 'DROP').toUpperCase();
+    extracted['proto'] = (cols[3] || 'TCP').toUpperCase();
+    extracted['src_ip'] = cols[4] || '0.0.0.0';
+    extracted['dst_ip'] = cols[5] || '0.0.0.0';
+    extracted['src_port'] = parseInt(cols[6] || '0', 10) || 0;
+    extracted['dst_port'] = parseInt(cols[7] || '0', 10) || 0;
+    extracted['size'] = parseInt(cols[8] || '0', 10) || 0;
+    const rawDir = cols[cols.length - 1] || 'RECEIVE';
+    extracted['direction'] = rawDir === 'RECEIVE' ? 'Inbound' : 'Outbound';
+
+    lineage.push(
+      { raw_field: 'date + time', raw_value: `${cols[0]} ${cols[1]}`, ocsf_path: 'time', status: 'mapped' },
+      { raw_field: 'action', raw_value: extracted['action'], ocsf_path: 'activity_name / activity_id', transformation: `${extracted['action']} -> ${extracted['action'] === 'ALLOW' ? 'Allow (1)' : 'Deny (6)'}`, status: 'transformed' },
+      { raw_field: 'protocol', raw_value: extracted['proto'], ocsf_path: 'connection_info.protocol_name', status: 'mapped' },
+      { raw_field: 'src-ip', raw_value: extracted['src_ip'], ocsf_path: 'src_endpoint.ip', status: 'mapped' },
+      { raw_field: 'dst-ip', raw_value: extracted['dst_ip'], ocsf_path: 'dst_endpoint.ip', status: 'mapped' },
+      { raw_field: 'src-port', raw_value: extracted['src_port'], ocsf_path: 'src_endpoint.port', status: 'mapped' },
+      { raw_field: 'dst-port', raw_value: extracted['dst_port'], ocsf_path: 'dst_endpoint.port', status: 'mapped' },
+      { raw_field: 'path / info', raw_value: rawDir, ocsf_path: 'connection_info.direction', transformation: 'RECEIVE -> Inbound', status: 'transformed' }
+    );
+  } else if (matchedConfig.id === 'paloalto-panos') {
+    const cols = rawText.split(',').map(c => c.replace(/^["']|["']$/g, '').trim());
+    
+    let parsedTime = new Date().toISOString();
+    try {
+      if (cols[1]) {
+        const d = new Date(cols[1].replace(/\//g, '-'));
+        if (!isNaN(d.getTime())) {
+          parsedTime = d.toISOString();
+        }
+      }
+    } catch {
+      // fallback
+    }
+
+    extracted['time'] = parsedTime;
     extracted['src_ip'] = cols[7] || '203.0.113.45';
     extracted['dst_ip'] = cols[8] || '10.0.4.12';
     extracted['rule_name'] = cols[11] || 'rule-block-ssh-external';
@@ -153,12 +189,12 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
     extracted['egress_if'] = cols[19] || 'ethernet1/2';
     extracted['device_name'] = cols[20] || 'edge-fw-01';
     extracted['session_id'] = cols[22] || '998812';
-    extracted['src_port'] = parseInt(cols[24] || '51322', 10);
-    extracted['dst_port'] = parseInt(cols[25] || '22', 10);
+    extracted['src_port'] = parseInt(cols[24] || '51322', 10) || 51322;
+    extracted['dst_port'] = parseInt(cols[25] || '22', 10) || 22;
     extracted['proto'] = (cols[29] || 'tcp').toUpperCase();
     extracted['action'] = cols[30] || cols[4] || 'deny';
-    extracted['bytes_sent'] = parseInt(cols[31] || '68', 10);
-    extracted['bytes_rcvd'] = parseInt(cols[32] || '68', 10);
+    extracted['bytes_sent'] = parseInt(cols[31] || '68', 10) || 0;
+    extracted['bytes_rcvd'] = parseInt(cols[32] || '68', 10) || 0;
 
     unmapped['zone_in'] = extracted['zone_in'];
     unmapped['zone_out'] = extracted['zone_out'];
@@ -185,176 +221,112 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
       extracted['dst_ip'] = json.dest_ip || '10.0.4.30';
       extracted['dst_port'] = json.dest_port || 51944;
       extracted['proto'] = (json.proto || 'TCP').toUpperCase();
-      extracted['event_type'] = json.event_type || 'alert';
-      
-      if (json.alert) {
-        extracted['sig_id'] = String(json.alert.signature_id || '2001219');
-        extracted['signature'] = json.alert.signature || 'ET SCAN Potential SSH Scan';
-        extracted['category'] = json.alert.category || 'Attempted Information Leak';
-        extracted['severity_raw'] = json.alert.severity || 2;
-      }
-
-      unmapped['event_type'] = json.event_type;
-      unmapped['flow_id'] = json.flow_id || undefined;
-      unmapped['in_iface'] = json.in_iface || undefined;
+      extracted['alert_title'] = json.alert?.signature || 'Security Finding';
+      extracted['alert_uid'] = String(json.alert?.signature_id || 2001219);
+      extracted['alert_category'] = json.alert?.category || 'Alert';
+      extracted['severity_id'] = json.alert?.severity || 2;
 
       lineage.push(
+        { raw_field: 'timestamp', raw_value: extracted['time'], ocsf_path: 'time', status: 'mapped' },
         { raw_field: 'src_ip', raw_value: extracted['src_ip'], ocsf_path: 'src_endpoint.ip', status: 'mapped' },
-        { raw_field: 'src_port', raw_value: extracted['src_port'], ocsf_path: 'src_endpoint.port', status: 'mapped' },
         { raw_field: 'dest_ip', raw_value: extracted['dst_ip'], ocsf_path: 'dst_endpoint.ip', status: 'mapped' },
-        { raw_field: 'dest_port', raw_value: extracted['dst_port'], ocsf_path: 'dst_endpoint.port', status: 'mapped' },
-        { raw_field: 'proto', raw_value: json.proto, ocsf_path: 'connection_info.protocol_name', status: 'transformed' },
-        { raw_field: 'alert.signature_id', raw_value: extracted['sig_id'], ocsf_path: 'finding_info.uid', status: 'mapped' },
-        { raw_field: 'alert.signature', raw_value: extracted['signature'], ocsf_path: 'finding_info.title', status: 'mapped' },
-        { raw_field: 'alert.category', raw_value: extracted['category'], ocsf_path: 'finding_info.desc', status: 'mapped' },
-        { raw_field: 'alert.severity', raw_value: extracted['severity_raw'], ocsf_path: 'severity / severity_id', transformation: '2 -> High (4)', status: 'transformed' }
+        { raw_field: 'proto', raw_value: extracted['proto'], ocsf_path: 'connection_info.protocol_name', status: 'mapped' },
+        { raw_field: 'alert.signature', raw_value: extracted['alert_title'], ocsf_path: 'finding_info.title', status: 'mapped' },
+        { raw_field: 'alert.severity', raw_value: extracted['severity_id'], ocsf_path: 'severity / severity_id', transformation: '2 -> High (4)', status: 'transformed' }
       );
     } catch {
       // fallback
     }
   } else if (matchedConfig.id === 'fortinet-fortios') {
     const kv = parseKeyValueString(rawText);
-    extracted['time'] = kv.date && kv.time ? new Date(`${kv.date}T${kv.time}Z`).toISOString() : new Date().toISOString();
-    extracted['src_ip'] = kv.srcip || '192.168.1.105';
-    extracted['src_port'] = parseInt(kv.srcport || '54211', 10);
-    extracted['dst_ip'] = kv.dstip || '172.217.16.206';
-    extracted['dst_port'] = parseInt(kv.dstport || '443', 10);
-    extracted['rule_name'] = kv.policyname || 'allow-outbound-web';
-    extracted['device_name'] = kv.devname || 'FG-HQ-FW01';
-    extracted['action'] = kv.action || 'accept';
-    extracted['proto'] = kv.proto === '6' ? 'TCP' : kv.proto === '17' ? 'UDP' : 'TCP';
-    extracted['src_intf'] = kv.srcintf;
-    extracted['dst_intf'] = kv.dstintf;
-    extracted['bytes_sent'] = parseInt(kv.sentbyte || '0', 10);
-    extracted['bytes_rcvd'] = parseInt(kv.rcvdbyte || '0', 10);
-
-    unmapped['devid'] = kv.devid;
-    unmapped['logid'] = kv.logid;
-    unmapped['level'] = kv.level;
-    unmapped['subtype'] = kv.subtype;
-    unmapped['app'] = kv.app;
-    unmapped['duration'] = kv.duration ? parseInt(kv.duration, 10) : undefined;
+    extracted['time'] = (kv['date'] && kv['time']) ? `${kv['date']}T${kv['time']}Z` : new Date().toISOString();
+    extracted['src_ip'] = kv['srcip'] || '192.168.1.105';
+    extracted['src_port'] = parseInt(kv['srcport'] || '54211', 10);
+    extracted['dst_ip'] = kv['dstip'] || '172.217.16.206';
+    extracted['dst_port'] = parseInt(kv['dstport'] || '443', 10);
+    extracted['action'] = kv['action'] || 'accept';
+    extracted['policyname'] = kv['policyname'] || 'allow-outbound';
+    extracted['devname'] = kv['devname'] || 'FG-HQ-FW01';
+    extracted['proto'] = kv['proto'] === '6' ? 'TCP' : kv['proto'] === '17' ? 'UDP' : 'TCP';
+    extracted['bytes_sent'] = parseInt(kv['sentbyte'] || '0', 10);
+    extracted['bytes_rcvd'] = parseInt(kv['rcvdbyte'] || '0', 10);
 
     lineage.push(
       { raw_field: 'srcip', raw_value: extracted['src_ip'], ocsf_path: 'src_endpoint.ip', status: 'mapped' },
-      { raw_field: 'srcport', raw_value: extracted['src_port'], ocsf_path: 'src_endpoint.port', status: 'mapped' },
       { raw_field: 'dstip', raw_value: extracted['dst_ip'], ocsf_path: 'dst_endpoint.ip', status: 'mapped' },
-      { raw_field: 'dstport', raw_value: extracted['dst_port'], ocsf_path: 'dst_endpoint.port', status: 'mapped' },
-      { raw_field: 'policyname', raw_value: extracted['rule_name'], ocsf_path: 'firewall_rule.name', status: 'mapped' },
-      { raw_field: 'devname', raw_value: extracted['device_name'], ocsf_path: 'device.name', status: 'mapped' },
-      { raw_field: 'proto', raw_value: kv.proto, ocsf_path: 'connection_info.protocol_name', transformation: '6 -> TCP', status: 'transformed' },
+      { raw_field: 'policyname', raw_value: extracted['policyname'], ocsf_path: 'firewall_rule.name', status: 'mapped' },
       { raw_field: 'action', raw_value: extracted['action'], ocsf_path: 'activity_name / activity_id', transformation: 'accept -> 1 (Allow)', status: 'transformed' },
-      { raw_field: 'app / level / logid', raw_value: `${kv.app} | ${kv.level}`, ocsf_path: 'unmapped.*', status: 'unmapped' }
+      { raw_field: 'devname', raw_value: extracted['devname'], ocsf_path: 'device.name', status: 'mapped' }
     );
   } else if (matchedConfig.id === 'cisco-asa') {
-    // Cisco ASA regex parsing
-    const match = /%ASA-(\d)-(\d+):\s+(\w+)\s+(\w+)\s+src\s+(\w+):([0-9.]+)\/(\d+)\s+dst\s+(\w+):([0-9.]+)\/(\d+)\s+by\s+access-group\s+"([^"]+)"/.exec(rawText);
+    const match = /%ASA-[1-7]-[0-9]{6}:\s+(Deny|Built|Teardown)\s+(\w+)\s+src\s+(\w+):([0-9.]+)\/(\d+)\s+dst\s+(\w+):([0-9.]+)\/(\d+)\s+by\s+access-group\s+"([^"]+)"/.exec(rawText);
     if (match) {
       extracted['time'] = new Date().toISOString();
-      extracted['action'] = match[3];
-      extracted['proto'] = match[4].toUpperCase();
-      extracted['src_zone'] = match[5];
-      extracted['src_ip'] = match[6];
-      extracted['src_port'] = parseInt(match[7], 10);
-      extracted['dst_zone'] = match[8];
-      extracted['dst_ip'] = match[9];
-      extracted['dst_port'] = parseInt(match[10], 10);
-      extracted['rule_name'] = match[11];
-      extracted['device_name'] = 'cisco-asa-edge';
-      
-      unmapped['msg_id'] = match[2];
-      unmapped['severity_code'] = match[1];
+      extracted['action'] = match[1];
+      extracted['proto'] = match[2].toUpperCase();
+      extracted['src_zone'] = match[3];
+      extracted['src_ip'] = match[4];
+      extracted['src_port'] = parseInt(match[5], 10);
+      extracted['dst_zone'] = match[6];
+      extracted['dst_ip'] = match[7];
+      extracted['dst_port'] = parseInt(match[8], 10);
+      extracted['acl_name'] = match[9];
 
       lineage.push(
-        { raw_field: 'src [zone:ip/port]', raw_value: `${match[5]}:${match[6]}/${match[7]}`, ocsf_path: 'src_endpoint.ip, src_endpoint.port, src_endpoint.zone', status: 'mapped' },
-        { raw_field: 'dst [zone:ip/port]', raw_value: `${match[8]}:${match[9]}/${match[10]}`, ocsf_path: 'dst_endpoint.ip, dst_endpoint.port, dst_endpoint.zone', status: 'mapped' },
-        { raw_field: 'access-group', raw_value: match[11], ocsf_path: 'firewall_rule.name', status: 'mapped' },
-        { raw_field: 'action', raw_value: match[3], ocsf_path: 'activity_name / activity_id', transformation: 'Deny -> 6 (Deny)', status: 'transformed' },
-        { raw_field: 'proto', raw_value: match[4], ocsf_path: 'connection_info.protocol_name', transformation: 'tcp -> TCP', status: 'transformed' }
+        { raw_field: 'src_ip', raw_value: extracted['src_ip'], ocsf_path: 'src_endpoint.ip', status: 'mapped' },
+        { raw_field: 'dst_ip', raw_value: extracted['dst_ip'], ocsf_path: 'dst_endpoint.ip', status: 'mapped' },
+        { raw_field: 'acl_name', raw_value: extracted['acl_name'], ocsf_path: 'firewall_rule.name', status: 'mapped' },
+        { raw_field: 'action', raw_value: extracted['action'], ocsf_path: 'activity_name / activity_id', transformation: `${extracted['action']} -> Deny (6)`, status: 'transformed' }
       );
-    } else {
-      // generic fallback
-      extracted['time'] = new Date().toISOString();
-      extracted['src_ip'] = '198.51.100.77';
-      extracted['dst_ip'] = '10.0.4.15';
-      extracted['src_port'] = 49152;
-      extracted['dst_port'] = 3389;
-      extracted['action'] = 'Deny';
-      extracted['proto'] = 'TCP';
-      extracted['rule_name'] = 'perimeter-inbound';
-      extracted['device_name'] = 'cisco-asa-edge';
     }
   }
 
   stages.push({
     stage: 'parse',
-    name: 'Field Extraction & Parsing',
+    name: 'Grammar Parsing',
     status: 'success',
     durationMs: Number((performance.now() - t2).toFixed(2)),
     details: {
-      extracted_field_count: Object.keys(extracted).length,
-      unmapped_field_count: Object.keys(unmapped).length,
-      sample_keys: Object.keys(extracted).slice(0, 6)
+      fields_extracted: Object.keys(extracted).length,
+      format: matchedConfig.format
     }
   });
 
-  // Stage 4: Classify OCSF Class
+  // Stage 4: Classify
   const t3 = performance.now();
-  const isAlert = matchedConfig.id === 'suricata-eve' || (extracted['event_type'] === 'alert') || extracted['sig_id'];
-  const targetClass = isAlert ? 'Detection Finding' : 'Network Activity';
-  const targetClassUid = isAlert ? 2004 : 4001;
+  const isFinding = matchedConfig.id === 'suricata-eve';
+  const class_name = isFinding ? 'Detection Finding' : 'Network Activity';
+  const class_uid = isFinding ? 2004 : 4001;
 
-  stages.push({
-    stage: 'classify',
-    name: 'OCSF Class Taxonomy Classification',
-    status: 'success',
-    durationMs: Number((performance.now() - t3).toFixed(2)),
-    details: {
-      target_class: targetClass,
-      class_uid: targetClassUid,
-      reason: isAlert ? 'Security alert signature matched' : 'Perimeter packet / session traffic'
-    }
-  });
-
-  // Stage 5: Map & Transform into Nested OCSF Entity Hierarchy
-  const t4 = performance.now();
-  let activity_name = 'Allow';
-  let activity_id = 1;
-  let severity: string | undefined = undefined;
-  let severity_id: number | undefined = undefined;
-
-  const rawAction = (extracted['action'] || '').toLowerCase();
-  if (rawAction.includes('deny') || rawAction.includes('drop') || rawAction.includes('block')) {
-    activity_name = 'Deny';
-    activity_id = 6;
-  } else if (rawAction.includes('allow') || rawAction.includes('accept') || rawAction.includes('built') || rawAction.includes('pass')) {
+  let activity_name = 'Deny';
+  let activity_id = 6;
+  const rawAction = String(extracted['action'] || '').toLowerCase();
+  if (rawAction === 'allow' || rawAction === 'accept' || rawAction === 'built') {
     activity_name = 'Allow';
     activity_id = 1;
-  } else if (isAlert) {
+  } else if (isFinding) {
     activity_name = 'Create';
     activity_id = 1;
   }
 
-  if (isAlert) {
-    const rawSev = extracted['severity_raw'];
-    if (rawSev === 1 || rawSev === '1' || rawSev === 'critical') {
-      severity = 'Critical';
-      severity_id = 5;
-    } else if (rawSev === 2 || rawSev === '2' || rawSev === 'high') {
-      severity = 'High';
-      severity_id = 4;
-    } else if (rawSev === 3 || rawSev === '3' || rawSev === 'medium') {
-      severity = 'Medium';
-      severity_id = 3;
-    } else {
-      severity = 'Low';
-      severity_id = 2;
+  stages.push({
+    stage: 'classify',
+    name: 'OCSF Taxonomy Classification',
+    status: 'success',
+    durationMs: Number((performance.now() - t3).toFixed(2)),
+    details: {
+      target_class: class_name,
+      class_uid,
+      activity_name,
+      activity_id
     }
-  }
+  });
 
-  const ocsfEvent: OCSFEvent = {
-    class_name: targetClass,
-    class_uid: targetClassUid,
+  // Stage 5: Map & Transform
+  const t4 = performance.now();
+  const normalizedEvent: OCSFEvent = {
+    class_name,
+    class_uid,
     activity_name,
     activity_id,
     time: extracted['time'] || new Date().toISOString(),
@@ -365,29 +337,29 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
     source_product: matchedConfig.product,
     src_endpoint: {
       ip: extracted['src_ip'] || '0.0.0.0',
-      port: extracted['src_port'] ? Number(extracted['src_port']) : undefined,
-      zone: extracted['zone_in'] || extracted['src_zone'],
-      interface: extracted['ingress_if'] || extracted['src_intf'],
+      port: extracted['src_port'] || 0,
+      zone: extracted['src_zone'] || extracted['zone_in'],
+      interface: extracted['ingress_if'],
       bytes: extracted['bytes_sent']
     },
     dst_endpoint: {
       ip: extracted['dst_ip'] || '0.0.0.0',
-      port: extracted['dst_port'] ? Number(extracted['dst_port']) : undefined,
-      zone: extracted['zone_out'] || extracted['dst_zone'],
-      interface: extracted['egress_if'] || extracted['dst_intf'],
+      port: extracted['dst_port'] || 0,
+      zone: extracted['dst_zone'] || extracted['zone_out'],
+      interface: extracted['egress_if'],
       bytes: extracted['bytes_rcvd']
     },
     connection_info: {
       protocol_name: extracted['proto'] || 'TCP',
-      direction: extracted['dst_port'] === 443 || extracted['dst_port'] === 80 ? 'outbound' : 'inbound',
+      direction: extracted['direction'] || (extracted['zone_in'] === 'untrust' ? 'inbound' : 'outbound'),
       session_id: extracted['session_id']
     },
     device: {
-      name: extracted['device_name'] || 'edge-perimeter-gw',
+      name: extracted['devname'] || extracted['device_name'] || 'edge-fw-01',
       vendor_name: matchedConfig.vendor,
-      type: isAlert ? 'IDS/IPS' : 'Firewall'
+      type: matchedConfig.id === 'suricata-eve' ? 'IDS/IPS' : matchedConfig.id === 'windows-firewall' ? 'Host Firewall' : 'Firewall'
     },
-    unmapped: Object.keys(unmapped).length > 0 ? unmapped : undefined,
+    unmapped,
     processing_metadata: {
       ingest_time: new Date().toISOString(),
       matched_config: `${matchedConfig.id}.yaml`,
@@ -396,32 +368,31 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
     }
   };
 
-  if (isAlert) {
-    ocsfEvent.severity = severity;
-    ocsfEvent.severity_id = severity_id;
-    ocsfEvent.finding_info = {
-      uid: extracted['sig_id'] || '2001219',
-      title: extracted['signature'] || 'ET SCAN Potential Threat Detection',
-      desc: extracted['category'] || 'Security Finding',
-      severity: severity,
-      category: 'Alert Finding'
+  if (extracted['rule_name'] || extracted['policyname'] || extracted['acl_name']) {
+    normalizedEvent.firewall_rule = {
+      name: extracted['rule_name'] || extracted['policyname'] || extracted['acl_name']
     };
-  } else {
-    ocsfEvent.firewall_rule = {
-      name: extracted['rule_name'] || 'default-policy'
+  }
+
+  if (isFinding) {
+    normalizedEvent.finding_info = {
+      uid: extracted['alert_uid'],
+      title: extracted['alert_title'],
+      desc: extracted['alert_category']
     };
+    normalizedEvent.severity = extracted['severity_id'] === 1 ? 'Critical' : extracted['severity_id'] === 2 ? 'High' : 'Medium';
+    normalizedEvent.severity_id = extracted['severity_id'] === 1 ? 5 : extracted['severity_id'] === 2 ? 4 : 3;
   }
 
   stages.push({
     stage: 'map',
-    name: 'OCSF Branch Mapping & Value Conversion',
+    name: 'Dotted Schema Mapping',
     status: 'success',
     durationMs: Number((performance.now() - t4).toFixed(2)),
     details: {
-      src_endpoint: `${ocsfEvent.src_endpoint?.ip}:${ocsfEvent.src_endpoint?.port}`,
-      dst_endpoint: `${ocsfEvent.dst_endpoint?.ip}:${ocsfEvent.dst_endpoint?.port}`,
-      protocol: ocsfEvent.connection_info?.protocol_name,
-      activity: ocsfEvent.activity_name
+      ocsf_class: class_name,
+      mapped_fields: lineage.filter(l => l.status !== 'unmapped').length,
+      unmapped_fields: Object.keys(unmapped).length
     }
   });
 
@@ -429,28 +400,25 @@ export function processRawLog(rawInput: string): NormalizationPipelineOutput {
   const t5 = performance.now();
   stages.push({
     stage: 'preserve',
-    name: 'Raw Data Preservation & UUID Traceability',
+    name: 'Lossless Audit Preservation',
     status: 'success',
     durationMs: Number((performance.now() - t5).toFixed(2)),
     details: {
-      event_uid: ocsfEvent.event_uid,
-      raw_bytes_preserved: ocsfEvent.raw_data.length,
-      unmapped_attributes_saved: Object.keys(ocsfEvent.unmapped || {}).length,
-      lossless_guarantee: '100% verified'
+      uuid_stamped: event_uid,
+      raw_preserved: true,
+      bytes_preserved: rawText.length
     }
   });
-
-  const totalDurationMs = Number((performance.now() - startTime).toFixed(2));
 
   return {
     event_uid,
     success: true,
-    stages,
+    matchedConfig: `${matchedConfig.vendor} ${matchedConfig.product}`,
     matchedVendor: matchedConfig.vendor,
     matchedProduct: matchedConfig.product,
-    matchedConfig: `${matchedConfig.id}.yaml`,
-    normalizedEvent: ocsfEvent,
+    stages,
+    normalizedEvent,
     lineage,
-    totalDurationMs
+    totalDurationMs: Number((performance.now() - startTime).toFixed(2))
   };
 }

@@ -19,9 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code, mappings, and tests
+# Copy source code, mappings, anomaly detection, and tests
 COPY src/ ./src/
 COPY mappings/ ./mappings/
+COPY anomaly_detection/ ./anomaly_detection/
 COPY tests/ ./tests/
 
 # Expose Engine API port
@@ -32,4 +33,4 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8001/health || exit 1
 
 # Default command: run FastAPI server
-CMD ["uvicorn", "src.app.main2:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8001"]

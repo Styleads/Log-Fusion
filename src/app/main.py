@@ -5,6 +5,7 @@ import sys
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -120,16 +121,16 @@ async def _forward_events_to_storage(events: List[Dict[str, Any]]) -> Dict[str, 
     payload = {
         "events": [
             {
-                "event_id": ev.get("metadata", {}).get("uid") or ev.get("event_uid", "unknown"),
+                "event_id": ev.get("metadata", {}).get("uid") or ev.get("event_uid") or f"gen-{uuid4()}",
                 "normalized_event": ev,
-                "raw_event": ev.get("raw_data", {}),
+                "raw_event": {"raw_data": ev.get("raw_data")} if isinstance(ev.get("raw_data"), str) else (ev.get("raw_data") or {}),
                 "provenance": {
                     "source": "engine_api",
-                    "vendor": ev.get("device", {}).get("vendor"),
+                    "vendor": ev.get("device", {}).get("vendor_name") or ev.get("device", {}).get("vendor") or "unknown",
                 },
             }
             for ev in events
-            if ev and (ev.get("metadata", {}).get("uid") or ev.get("event_uid"))
+            if ev
         ]
     }
     

@@ -69,7 +69,7 @@ export interface OCSFEvent {
   // Traceability & Lineage
   event_uid: string; // Shared UUID connecting normalized event to raw form
   raw_data: string; // Pristine raw event string
-  raw_format: 'csv' | 'json' | 'kv' | 'syslog' | 'xml';
+  raw_format: 'csv' | 'json' | 'kv' | 'syslog' | 'xml' | 'space_delimited';
   source_vendor: string;
   source_product: string;
   

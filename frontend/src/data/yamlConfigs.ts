@@ -2,7 +2,7 @@ export interface VendorYAMLConfig {
   id: string;
   vendor: string;
   product: string;
-  format: 'csv' | 'json' | 'kv' | 'syslog' | 'xml';
+  format: 'csv' | 'json' | 'kv' | 'syslog' | 'xml' | 'space_delimited';
   description: string;
   yamlContent: string;
   detection: {
@@ -14,6 +14,60 @@ export interface VendorYAMLConfig {
 }
 
 export const VENDOR_YAML_CONFIGS: VendorYAMLConfig[] = [
+  {
+    id: 'windows-firewall',
+    vendor: 'Microsoft',
+    product: 'Windows Firewall',
+    format: 'space_delimited',
+    description: 'Declarative mapping config for Microsoft Windows Firewall (pfirewall.log) space-delimited stream',
+    sampleRaw: '2026-08-27 09:02:11 DROP TCP 45.33.32.156 10.0.0.14 51322 3389 0 S 3421552 0 8192 - - - RECEIVE',
+    yamlContent: `source_identity:
+  vendor: "Microsoft"
+  product: "Windows Firewall"
+  format: "space_delimited"
+  version: "1.5"
+
+detection:
+  method: "regex"
+  pattern: "^\\\\d{4}-\\\\d{2}-\\\\d{2} \\\\d{2}:\\\\d{2}:\\\\d{2} (DROP|ALLOW) (TCP|UDP|ICMP)"
+
+parsing:
+  delimiter: " "
+  skip_line_prefix: "#"
+
+classification:
+  target_class: "Network Activity"
+  class_uid: 4001
+
+field_map:
+  date_time: "time"
+  action: "activity_name"
+  protocol: "connection_info.protocol_name"
+  src_ip: "src_endpoint.ip"
+  dst_ip: "dst_endpoint.ip"
+  src_port: "src_endpoint.port"
+  dst_port: "dst_endpoint.port"
+  size: "traffic.bytes"
+
+transforms:
+  action:
+    DROP: { activity_id: 6, activity_name: "Deny" }
+    ALLOW: { activity_id: 1, activity_name: "Allow" }
+
+static_fields:
+  "device.vendor_name": "Microsoft"
+  "device.type": "Host Firewall"
+  "metadata.product.vendor_name": "Microsoft"
+  "metadata.product.name": "Windows Firewall"
+
+raw_preservation:
+  enabled: true
+  target_field: "raw_data"`,
+    detection: {
+      method: 'regex',
+      pattern: '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} (DROP|ALLOW)'
+    }
+  },
   {
     id: 'paloalto-panos',
     vendor: 'Palo Alto Networks',
@@ -225,7 +279,7 @@ classification:
   class_uid: 4001
 
 regex_capture:
-  pattern: "%ASA-(?<severity_code>[1-7])-(?<msg_id>[0-9]+):\\s+(?<action>Deny|Built|Teardown)\\s+(?<proto>\\w+)\\s+src\\s+(?<src_zone>\\w+):(?<src_ip>[0-9.]+)/(?<src_port>\\d+)\\s+dst\\s+(?<dst_zone>\\w+):(?<dst_ip>[0-9.]+)/(?<dst_port>\\d+)\\s+by\\s+access-group\\s+\"(?<acl_name>[^\"]+)\""
+  pattern: "%ASA-(?<severity_code>[1-7])-(?<msg_id>[0-9]+):\\\\s+(?<action>Deny|Built|Teardown)\\\\s+(?<proto>\\\\w+)\\\\s+src\\\\s+(?<src_zone>\\\\w+):(?<src_ip>[0-9.]+)/(?<src_port>\\\\d+)\\\\s+dst\\\\s+(?<dst_zone>\\\\w+):(?<dst_ip>[0-9.]+)/(?<dst_port>\\\\d+)\\\\s+by\\\\s+access-group\\\\s+\"(?<acl_name>[^\"]+)\""
 
 field_map:
   src_ip: "src_endpoint.ip"

@@ -15,7 +15,7 @@ export interface BackendStatus {
 const API_BASE_URL = '/api';
 
 class ApiService {
-  private useMockOnly: boolean = false;
+  private useMockOnly: boolean = true;
   private localEvents: OCSFEvent[] = [...INITIAL_MOCK_EVENTS];
 
   public setMockMode(forceMock: boolean) {

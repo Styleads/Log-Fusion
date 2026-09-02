@@ -13,15 +13,16 @@ import { DrilldownModal } from './components/drilldown/DrilldownModal';
 import { InstantIngestModal } from './components/ingest/InstantIngestModal';
 import { NotificationDrawer, NotificationItem } from './components/notifications/NotificationDrawer';
 import { SettingsModal } from './components/settings/SettingsModal';
-import { BottomDock } from './components/common/BottomDock';
+import { BottomDock, ActiveTabType } from './components/common/BottomDock';
+import { AutoMappingStudio } from './components/assistant/AutoMappingStudio';
 import { OCSFEvent, OCSFClassName } from './types/ocsf';
 import { FilterState, SummaryStats } from './types/events';
 import { apiService, BackendStatus } from './services/apiService';
 import { SAMPLE_RAW_LOGS } from './data/sampleRawLogs';
 
 export const App: React.FC = () => {
-  // Navigation: 'dashboard' (Overview) | 'analytics' (Statistics & Rings) | 'docs' (OCSF & YAMLs) | 'chat' (Joi AI)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'analytics' | 'ingest' | 'chat' | 'docs'>('dashboard');
+  // Navigation: 'dashboard' | 'analytics' | 'assistant' | 'ingest' | 'chat' | 'docs'
+  const [activeTab, setActiveTab] = useState<ActiveTabType>('dashboard');
 
   // Events & Backend State
   const [events, setEvents] = useState<OCSFEvent[]>([]);
@@ -359,7 +360,17 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* VIEW 3: JOI AI CHATBOT */}
+        {/* VIEW 3: AUTO-MAPPING ASSISTANT STUDIO */}
+        {activeTab === 'assistant' && (
+          <div className="animate-fade-in">
+            <AutoMappingStudio
+              onEventIngested={handleEventIngested}
+              onOpenDrilldown={(e) => setSelectedEvent(e)}
+            />
+          </div>
+        )}
+
+        {/* VIEW 4: JOI AI CHATBOT */}
         {activeTab === 'chat' && (
           <div className="animate-fade-in">
             <SecurityChatbot

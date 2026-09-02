@@ -2,7 +2,7 @@ services:
   # RAG Chatbot CLI service
   rag-chatbot:
     build: .
-    image: rag-chatbot:latest
+    image: ulpf-rag-chatbot:latest
     container_name: ulpf-rag-chatbot
     stdin_open: true
     tty: true
@@ -15,6 +15,8 @@ services:
     volumes:
       - ./documents:/app/documents
       - ./vectorstore:/app/vectorstore
+    networks:
+      - ulpf-network
 
   # Optional containerized Ollama LLM / Embedding engine
   # Start with: docker compose --profile with-ollama up -d
@@ -28,7 +30,13 @@ services:
     restart: unless-stopped
     profiles:
       - with-ollama
+    networks:
+      - ulpf-network
+
+networks:
+  ulpf-network:
+    name: ulpf-network
+    driver: bridge
 
 volumes:
   ollama-data:
-

@@ -475,24 +475,3 @@ logflash/
     ├── test_pipeline.py
     ├── test_timestamp.py
     └── test_transforms.py
-```
-
----
-
-## 13. Repository Cleanup Guide
-
-Because all project reports, specifications, and guides have been consolidated into this single master document (`MASTER_PROJECT_DOCUMENTATION.md`), you can safely remove the fragmented `.md` files that are cluttering your root and subfolders.
-
-### 13.1. PowerShell Command (Windows)
-Run the following PowerShell command in your terminal from the `logflash` root directory:
-
-```powershell
-Remove-Item -Path AUTO_MAPPING_ASSISTANT_SPEC.md, Backend_report.md, database_report.md, docker_report.md, ENGINE_REPORT.md, mapping_assistant.md, PROJECT_BRIEF.md, database/README.md, frontend/FRONTEND.md, frontend/QUICKSTART.md, frontend/README.md, rag_chatbots/Read.md -Force -ErrorAction SilentlyContinue
-```
-
-### 13.2. Bash / Linux Command
-```bash
-rm -f AUTO_MAPPING_ASSISTANT_SPEC.md Backend_report.md database_report.md docker_report.md ENGINE_REPORT.md mapping_assistant.md PROJECT_BRIEF.md database/README.md frontend/FRONTEND.md frontend/QUICKSTART.md frontend/README.md rag_chatbots/Read.md
-```
-
-> **Note**: Keeping only `README.md` and `MASTER_PROJECT_DOCUMENTATION.md` in your repository will ensure your workspace remains clean, organized, and easy for any human or AI agent to navigate.

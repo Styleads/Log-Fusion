@@ -111,10 +111,18 @@ services:
       sh -c "
       echo 'Waiting for Ollama container to start...';
       until curl -s http://ollama:11434/api/tags > /dev/null; do sleep 2; done;
-      echo 'Pulling phi4-mini reasoning model...';
-      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"phi4-mini\"}';
-      echo 'Pulling nomic-embed-text embedding model...';
-      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}';
+      if curl -s http://ollama:11434/api/tags | grep -q 'phi4-mini'; then
+        echo 'phi4-mini model already present, skipping download.';
+      else
+        echo 'Pulling phi4-mini reasoning model (initial download)...';
+        curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"phi4-mini\"}';
+      fi;
+      if curl -s http://ollama:11434/api/tags | grep -q 'nomic-embed-text'; then
+        echo 'nomic-embed-text model already present, skipping download.';
+      else
+        echo 'Pulling nomic-embed-text embedding model (initial download)...';
+        curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}';
+      fi;
       echo 'All Ollama models downloaded and ready!';
       "
     restart: "no"

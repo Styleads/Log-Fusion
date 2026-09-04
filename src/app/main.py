@@ -729,10 +729,11 @@ async def chat_rag(payload: ChatRequest):
         else (payload.disable_fallback if payload.disable_fallback is not None else CHATBOT_FORCE_OLLAMA)
     )
 
-    # Try querying local Ollama LLM if reachable (5.0s connect timeout in forced mode, 1.0s in fallback mode)
+    # Try querying local Ollama LLM if reachable (5.0s connect / 90.0s read timeout in forced mode, 1.0s / 25.0s in fallback mode)
     conn_timeout = 5.0 if effective_force_ollama else 1.0
+    read_timeout = 90.0 if effective_force_ollama else 25.0
     llm_answer, llm_error = await _query_ollama(
-        payload.prompt, context_summary, timeout_seconds=25.0, connect_timeout=conn_timeout
+        payload.prompt, context_summary, timeout_seconds=read_timeout, connect_timeout=conn_timeout
     )
     if llm_answer:
         cite_events = matching_threat_events if matching_threat_events else (

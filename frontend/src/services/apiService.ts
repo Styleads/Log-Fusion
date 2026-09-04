@@ -259,8 +259,9 @@ class ApiService {
 
     if (!this.useMockOnly) {
       try {
+        const timeoutMs = forceOllama ? 90000 : 25000;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         const res = await fetch(`${ENGINE_API_BASE}/api/v1/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

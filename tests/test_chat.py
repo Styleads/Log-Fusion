@@ -190,4 +190,95 @@ def test_chat_ransomware_negative(client, sample_76_events):
     assert "no" in data["text"].lower() or "0" in data["text"] or "zero" in data["text"].lower()
 
 
+def test_chat_force_ollama_success(monkeypatch, client, sample_76_events):
+    async def mock_query(prompt, summary, timeout_seconds=25.0, connect_timeout=1.0):
+        return "Simulated Ollama response: Analyzed 76 events with zero trojans.", None
+
+    monkeypatch.setattr("src.app.main._query_ollama", mock_query)
+
+    resp = client.post("/api/v1/chat", json={
+        "prompt": "give me a threat summary",
+        "context_events": sample_76_events,
+        "force_ollama": True,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["source"] == "ollama_llm"
+    assert "Simulated Ollama response" in data["text"]
+    assert len(data["citations"]) > 0
+
+
+def test_chat_force_ollama_failure_no_fallback(monkeypatch, client, sample_76_events):
+    async def mock_failed_query(prompt, summary, timeout_seconds=25.0, connect_timeout=1.0):
+        return None, "Connection refused: http://localhost:11434"
+
+    monkeypatch.setattr("src.app.main._query_ollama", mock_failed_query)
+
+    resp = client.post("/api/v1/chat", json={
+        "prompt": "how many blocked requests?",
+        "context_events": sample_76_events,
+        "force_ollama": True,
+    })
+    assert resp.status_code == 503
+    data = resp.json()
+    assert "detail" in data
+    assert data["detail"]["fallback_disabled"] is True
+    assert data["detail"]["source"] == "ollama_llm"
+    assert "Connection refused" in data["detail"]["details"]
+
+
+def test_chat_disable_fallback_alias(monkeypatch, client, sample_76_events):
+    async def mock_failed_query(prompt, summary, timeout_seconds=25.0, connect_timeout=1.0):
+        return None, "Ollama daemon offline"
+
+    monkeypatch.setattr("src.app.main._query_ollama", mock_failed_query)
+
+    resp = client.post("/api/v1/chat", json={
+        "prompt": "how many blocked requests?",
+        "context_events": sample_76_events,
+        "disable_fallback": True,
+    })
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["detail"]["fallback_disabled"] is True
+
+
+def test_chat_env_var_force_ollama(monkeypatch, client, sample_76_events):
+    monkeypatch.setattr("src.app.main.CHATBOT_FORCE_OLLAMA", True)
+
+    async def mock_failed_query(prompt, summary, timeout_seconds=25.0, connect_timeout=1.0):
+        return None, "All candidate endpoints failed"
+
+    monkeypatch.setattr("src.app.main._query_ollama", mock_failed_query)
+
+    resp = client.post("/api/v1/chat", json={
+        "prompt": "how many total events?",
+        "context_events": sample_76_events,
+    })
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["detail"]["fallback_disabled"] is True
+
+
+def test_chat_default_allows_fallback(monkeypatch, client, sample_76_events):
+    monkeypatch.setattr("src.app.main.CHATBOT_FORCE_OLLAMA", False)
+
+    async def mock_failed_query(prompt, summary, timeout_seconds=25.0, connect_timeout=1.0):
+        return None, "Ollama daemon offline"
+
+    monkeypatch.setattr("src.app.main._query_ollama", mock_failed_query)
+
+    resp = client.post("/api/v1/chat", json={
+        "prompt": "how many blocked requests?",
+        "context_events": sample_76_events,
+        "force_ollama": False,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["source"] == "grounded_telemetry"
+    assert "20" in data["text"]
+
+
+
 

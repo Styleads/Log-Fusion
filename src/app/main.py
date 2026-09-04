@@ -5,7 +5,7 @@ import sys
 import re
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +33,7 @@ assistant: Optional[AutoMappingAssistant] = None
 STORAGE_API_URL = os.getenv("STORAGE_API_URL", "http://storage-api:8000")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi4-mini")
+CHATBOT_FORCE_OLLAMA = os.getenv("CHATBOT_FORCE_OLLAMA", "false").lower() in ("true", "1", "yes")
 
 
 def get_pipeline() -> NormalizationPipeline:
@@ -106,6 +107,8 @@ class AssistantSaveRequest(BaseModel):
 class ChatRequest(BaseModel):
     prompt: str = Field(..., description="User question or security query")
     context_events: Optional[List[Dict[str, Any]]] = Field(default=None, description="Optional normalized events for grounding")
+    force_ollama: Optional[bool] = Field(default=None, description="Force response from Ollama; disable fallback to grounded telemetry engine")
+    disable_fallback: Optional[bool] = Field(default=None, description="Alias for force_ollama to disable grounded telemetry engine fallback")
 
 
 class AnomalyRequest(BaseModel):
@@ -582,8 +585,13 @@ def _build_citation(e: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def _query_ollama(user_prompt: str, context_summary: str) -> Optional[str]:
-    """Query local or containerized Ollama server if available, fast-failing if offline."""
+async def _query_ollama(
+    user_prompt: str,
+    context_summary: str,
+    timeout_seconds: float = 25.0,
+    connect_timeout: float = 1.0,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Query local or containerized Ollama server if available, returning (response_text, error_detail)."""
     candidate_urls = [OLLAMA_BASE_URL]
     for url in ("http://ollama:11434", "http://host.docker.internal:11434", "http://localhost:11434"):
         if url not in candidate_urls:
@@ -600,8 +608,8 @@ async def _query_ollama(user_prompt: str, context_summary: str) -> Optional[str]
         f"Analyst Question: {user_prompt}\n\nAnswer:"
     )
 
-    # 1.0s connect timeout detects if Ollama daemon is offline; 25.0s total timeout allows full LLM reasoning
-    req_timeout = httpx.Timeout(timeout=25.0, connect=1.0)
+    req_timeout = httpx.Timeout(timeout=timeout_seconds, connect=connect_timeout)
+    last_error: Optional[str] = None
 
     for base_url in candidate_urls:
         endpoint = f"{base_url.rstrip('/')}/api/generate"
@@ -617,10 +625,15 @@ async def _query_ollama(user_prompt: str, context_summary: str) -> Optional[str]
                     data = resp.json()
                     res_text = data.get("response", "").strip()
                     if res_text:
-                        return res_text
-        except Exception:
+                        return res_text, None
+                    last_error = f"{endpoint} returned HTTP 200 but empty response content."
+                else:
+                    last_error = f"{endpoint} returned HTTP {resp.status_code}: {resp.text}"
+        except Exception as exc:
+            last_error = f"Failed connecting to {endpoint}: {exc}"
             continue
-    return None
+
+    return None, (last_error or f"Unable to reach any Ollama endpoint in {candidate_urls}")
 
 
 @app.post("/api/v1/chat")
@@ -710,8 +723,17 @@ async def chat_rag(payload: ChatRequest):
         else:
             context_summary += f"\nNote: Zero events in the OCSF datastore matched search terms: {threat_search_terms}"
 
-    # Try querying local Ollama LLM if reachable
-    llm_answer = await _query_ollama(payload.prompt, context_summary)
+    effective_force_ollama = (
+        payload.force_ollama
+        if payload.force_ollama is not None
+        else (payload.disable_fallback if payload.disable_fallback is not None else CHATBOT_FORCE_OLLAMA)
+    )
+
+    # Try querying local Ollama LLM if reachable (5.0s connect timeout in forced mode, 1.0s in fallback mode)
+    conn_timeout = 5.0 if effective_force_ollama else 1.0
+    llm_answer, llm_error = await _query_ollama(
+        payload.prompt, context_summary, timeout_seconds=25.0, connect_timeout=conn_timeout
+    )
     if llm_answer:
         cite_events = matching_threat_events if matching_threat_events else (
             findings if any(w in prompt for w in ("finding", "alert", "threat")) else (
@@ -734,6 +756,19 @@ async def chat_rag(payload: ChatRequest):
                 "vendors": vendor_counts,
             }
         }
+
+    # If fallback to grounded telemetry is disabled and Ollama was forced, fail fast with 503
+    if effective_force_ollama:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "Ollama LLM generation failed or service unreachable",
+                "details": llm_error or "All candidate Ollama endpoints failed to respond.",
+                "model": OLLAMA_MODEL,
+                "fallback_disabled": True,
+                "source": "ollama_llm",
+            },
+        )
 
     # ---------------------------------------------------------
     # 2. Grounded Threat Search Engine Fallback

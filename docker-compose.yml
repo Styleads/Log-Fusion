@@ -55,6 +55,7 @@ services:
     environment:
       - STORAGE_API_URL=http://storage-api:8000
       - OLLAMA_BASE_URL=http://ollama:11434
+      - CHATBOT_FORCE_OLLAMA=${CHATBOT_FORCE_OLLAMA:-false}
       - MAPPINGS_DIR=/app/mappings
       - PYTHONUNBUFFERED=1
     extra_hosts:

@@ -250,7 +250,13 @@ class ApiService {
   /**
    * AI Chatbot RAG query against Unified Gateway API or local grounded analyzer
    */
-  async sendChatMessage(userText: string, currentEvents: OCSFEvent[]): Promise<ChatMessage> {
+  async sendChatMessage(
+    userText: string,
+    currentEvents: OCSFEvent[],
+    options?: { forceOllama?: boolean }
+  ): Promise<ChatMessage> {
+    const forceOllama = options?.forceOllama ?? false;
+
     if (!this.useMockOnly) {
       try {
         const controller = new AbortController();
@@ -260,7 +266,8 @@ class ApiService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: userText,
-            context_events: currentEvents
+            context_events: currentEvents,
+            force_ollama: forceOllama
           }),
           signal: controller.signal
         });
@@ -277,10 +284,48 @@ class ApiService {
             citations: reply.citations || [],
             structuredData: reply.structuredData
           };
+        } else if (forceOllama) {
+          // In forced Ollama mode, do NOT fall back to local grounded analyzer
+          let errorDetail = 'Ollama service returned an error';
+          try {
+            const errData = await res.json();
+            errorDetail = errData.detail?.details || errData.detail?.error || errData.message || JSON.stringify(errData.detail || errData);
+          } catch {
+            errorDetail = `HTTP ${res.status}: ${res.statusText}`;
+          }
+          return {
+            id: `err-${Date.now()}`,
+            sender: 'assistant',
+            timestamp: new Date().toISOString(),
+            isError: true,
+            source: 'ollama_llm',
+            text: `⚠️ **Ollama LLM Error (Strict Ollama Mode Active)**\n\nFailed to receive response from Ollama model, and fallback to Grounded Telemetry Engine is **disabled**.\n\n**Details**: \`${errorDetail}\`\n\n*To resolve, verify that Ollama is running (\`docker compose up -d ollama ollama-pull\`) or disable Strict Ollama Mode.*`
+          };
         }
-      } catch {
-        // Fallback to grounded local analyzer
+      } catch (err: any) {
+        if (forceOllama) {
+          return {
+            id: `err-${Date.now()}`,
+            sender: 'assistant',
+            timestamp: new Date().toISOString(),
+            isError: true,
+            source: 'ollama_llm',
+            text: `⚠️ **Ollama Connection Error (Strict Ollama Mode Active)**\n\nCould not reach the backend AI engine (${err?.message || 'Network error'}), and fallback to Grounded Telemetry Engine is **disabled**.\n\n*Check network connectivity or disable Strict Ollama Mode to allow grounded heuristic analysis.*`
+          };
+        }
+        // Fallback to grounded local analyzer when forceOllama is false
       }
+    }
+
+    if (forceOllama) {
+      return {
+        id: `err-${Date.now()}`,
+        sender: 'assistant',
+        timestamp: new Date().toISOString(),
+        isError: true,
+        source: 'ollama_llm',
+        text: `⚠️ **Mock Mode Restriction**\n\nMock-only mode cannot connect to Ollama LLM, and fallback to Grounded Telemetry Engine is disabled.`
+      };
     }
 
     // Local Grounded RAG Query Engine

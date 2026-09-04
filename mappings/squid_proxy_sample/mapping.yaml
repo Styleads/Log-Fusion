@@ -1,0 +1,79 @@
+# Mapping config: squid proxy sample (squid proxy sample)
+# Status: Reviewed & Approved for Production Normalization
+
+source_identity:
+  vendor: squid proxy sample
+  product: squid proxy sample
+  format: space_delimited
+  version: '1.0'
+  status: reviewed
+detection:
+  method: regex
+  pattern: ^\d{10}\.\d{3}\s+\d+\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+(?:TCP|UDP)_\w+/\d+
+parsing:
+  delimiter: whitespace
+  skip_line_prefix: '#'
+  fields:
+    0: raw_timestamp
+    1: raw_elapsed_ms
+    2: raw_client_ip
+    3: raw_result_code
+    4: raw_bytes
+    5: raw_method
+    6: raw_url
+    7: raw_rfc931
+    8: raw_peer
+    9: raw_content_type
+classification:
+  default_class_uid: 4002
+  default_class_name: HTTP Activity
+  rules:
+  - when:
+      raw_result_code_contains: DENIED
+    class_uid: 4002
+    activity_id: 6
+    activity_name: Deny
+  - when:
+      raw_result_code_contains: HIT
+    class_uid: 4002
+    activity_id: 1
+    activity_name: Allow
+  - when:
+      raw_result_code_contains: MISS
+    class_uid: 4002
+    activity_id: 1
+    activity_name: Allow
+field_map:
+  raw_bytes: traffic.bytes
+  raw_method: http_request.http_method
+  raw_url: http_request.url.text
+  raw_content_type: http_response.content_type
+  raw_client_ip: src_endpoint.ip
+static_fields:
+  device.vendor_name: Squid
+  device.type: Firewall
+  metadata.product.vendor_name: Squid
+  metadata.product.name: Squid Proxy
+transforms:
+  raw_elapsed_ms:
+    type: cast_int
+    target: duration_ms
+  raw_result_code:
+    type: split_status
+    delimiter: /
+    parts:
+    - cache_result
+    - http_status
+    target_status_field: http_response.code
+  raw_bytes:
+    type: integer
+timestamp:
+  source_field: raw_timestamp
+  format: epoch_seconds_fractional
+  timezone: UTC
+unmapped_policy:
+  action: bucket
+  target: unmapped
+raw_preservation:
+  enabled: true
+  target_field: raw_data

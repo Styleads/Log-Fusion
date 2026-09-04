@@ -28,6 +28,7 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
   ]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [forceOllama, setForceOllama] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -54,17 +55,20 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
     setIsSending(true);
 
     try {
-      const response = await apiService.sendChatMessage(query, events);
+      const response = await apiService.sendChatMessage(query, events, { forceOllama });
       setMessages(prev => [...prev, response]);
-    } catch (err) {
+    } catch (err: any) {
       setMessages(prev => [
         ...prev,
         {
           id: `err-${Date.now()}`,
           sender: 'assistant',
           timestamp: new Date().toISOString(),
-          source: 'grounded_telemetry',
-          text: `⚠️ Unable to process query against backend. Grounded in-memory analysis fallback error: ${err}`
+          isError: true,
+          source: forceOllama ? 'ollama_llm' : 'grounded_telemetry',
+          text: forceOllama
+            ? `⚠️ **Strict Ollama Request Failed**: ${err?.message || err}. Fallback to Grounded Telemetry Engine is disabled.`
+            : `⚠️ Unable to process query against backend. Grounded in-memory analysis fallback error: ${err}`
         }
       ]);
     } finally {
@@ -103,28 +107,53 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            setMessages([
-              {
-                id: `reset-${Date.now()}`,
-                sender: 'assistant',
-                timestamp: new Date().toISOString(),
-                source: 'grounded_telemetry',
-                text: 'Chat history cleared. Grounded query engine ready.',
-                suggestedFollowUps: [
-                  'Any repeated SSH scans from 185.220.101.4?',
-                  'Show all Deny events across firewalls',
-                  'What are the active detection findings?'
-                ]
-              }
-            ]);
-          }}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-          title="Clear conversation"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Strict Ollama Mode Toggle */}
+          <button
+            onClick={() => setForceOllama(prev => !prev)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono transition-all border ${
+              forceOllama
+                ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/60 shadow-sm shadow-emerald-950/50'
+                : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+            }`}
+            title={
+              forceOllama
+                ? 'Strict Ollama Active: Grounded telemetry fallback is disabled'
+                : 'Auto-Fallback Active: Grounded telemetry engine responds if Ollama is offline'
+            }
+          >
+            <Bot className={`w-3.5 h-3.5 ${forceOllama ? 'text-emerald-400' : 'text-slate-500'}`} />
+            <span>{forceOllama ? 'Strict Ollama' : 'Auto-Fallback'}</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                forceOllama ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'
+              }`}
+            />
+          </button>
+
+          <button
+            onClick={() => {
+              setMessages([
+                {
+                  id: `reset-${Date.now()}`,
+                  sender: 'assistant',
+                  timestamp: new Date().toISOString(),
+                  source: 'grounded_telemetry',
+                  text: 'Chat history cleared. Grounded query engine ready.',
+                  suggestedFollowUps: [
+                    'Any repeated SSH scans from 185.220.101.4?',
+                    'Show all Deny events across firewalls',
+                    'What are the active detection findings?'
+                  ]
+                }
+              ]);
+            }}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            title="Clear conversation"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Messages Feed */}
@@ -151,9 +180,14 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
               {/* Message Bubble */}
               <div className={`max-w-[85%] sm:max-w-[75%] space-y-2.5 ${isUser ? 'items-end' : 'items-start'}`}>
                 {/* Source Badge for Assistant Messages */}
-                {!isUser && msg.source && (
+                {!isUser && (msg.source || msg.isError) && (
                   <div className="flex items-center gap-1.5 pb-0.5">
-                    {msg.source === 'ollama_llm' ? (
+                    {msg.isError ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-rose-950/80 text-rose-300 border border-rose-700/50">
+                        <ShieldAlert className="w-3 h-3 text-rose-400" />
+                        <span>Ollama Required · Fallback Disabled</span>
+                      </span>
+                    ) : msg.source === 'ollama_llm' ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-700/50">
                         <Bot className="w-3 h-3 text-emerald-400" />
                         <span>Ollama LLM (phi4-mini)</span>
@@ -171,6 +205,8 @@ export const SecurityChatbot: React.FC<SecurityChatbotProps> = ({ events, onOpen
                   className={`p-3.5 sm:p-4 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-md ${
                     isUser
                       ? 'bg-cyan-600 text-white font-medium rounded-tr-none'
+                      : msg.isError
+                      ? 'bg-rose-950/25 text-rose-200 border border-rose-800/60 rounded-tl-none font-sans'
                       : 'bg-slate-950/90 text-slate-200 border border-slate-800 rounded-tl-none font-sans'
                   }`}
                 >

@@ -280,6 +280,9 @@ Navigate to the **Chat** tab:
   - *"Show me HTTP requests directed at malicious domains."*
   - *"What firewall rules blocked traffic on port 22?"*
 - Joi AI retrieves verified events from the vector database and cites exact event UUIDs.
+- **Strict Ollama Mode vs. Auto-Fallback**:
+  - By default, Joi AI uses **Auto-Fallback**: if Ollama is unreachable or offline, queries gracefully fall back to the deterministic, zero-dependency **Grounded Telemetry Engine** (`source: grounded_telemetry`).
+  - To force LLM reasoning and disable the grounded telemetry fallback, toggle **"Strict Ollama"** in the chat header, set `force_ollama: true` (or `disable_fallback: true`) in `/api/v1/chat`, or set the container environment variable `CHATBOT_FORCE_OLLAMA=true`. If Ollama is offline in this mode, an explicit HTTP 503 error is returned detailing the connection diagnostic rather than falling back.
 
 ---
 
@@ -298,7 +301,7 @@ Navigate to the **Chat** tab:
 | `GET` | `/api/v1/assistant/drafts` | List all pending draft mappings |
 | `POST` | `/api/v1/assistant/approve/{slug}` | Promote draft to `reviewed` and reload engine |
 | `POST` | `/api/v1/reload` | Hot-reload all mappings from disk |
-| `POST` | `/api/v1/chat` | Grounded RAG security query handler |
+| `POST` | `/api/v1/chat` | Grounded RAG security query handler (supports `force_ollama` / `disable_fallback` to enforce Ollama generation) |
 | `POST` | `/api/v1/anomalies` | Fast statistical anomaly scanner |
 | `DELETE` | `/api/v1/events` | Forward database wipe request to Storage API |
 

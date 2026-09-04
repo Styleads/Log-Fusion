@@ -318,12 +318,23 @@ async def approve_draft_mapping(slug: str):
         # Reload pipeline mapping configs so approved source is immediately active
         pipe.loader.reload()
         pipe.detector = pipe.detector.__class__(pipe.loader)
+        pipe._components_cache.clear()
         return {"status": "success", "data": approval_result}
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.exception(f"Error approving draft mapping '{slug}'")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/v1/reload")
+async def reload_mappings():
+    """Reload all mapping configurations and clear component caches."""
+    pipe = get_pipeline()
+    configs = pipe.loader.reload()
+    pipe.detector = pipe.detector.__class__(pipe.loader)
+    pipe._components_cache.clear()
+    return {"status": "success", "active_configs": len(configs)}
 
 
 # -------------------------------------------------------------

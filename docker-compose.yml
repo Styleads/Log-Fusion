@@ -64,6 +64,8 @@ services:
     volumes:
       - ./mappings:/app/mappings
       - ./src:/app/src
+      - ./tests:/app/tests
+      - ./unkownlogs:/app/unkownlogs
     networks:
       - ulpf-network
 
@@ -83,6 +85,8 @@ services:
     environment:
       - STORAGE_API_URL=http://storage-api:8000
       - ENGINE_API_URL=http://engine:8001
+    volumes:
+      - ./frontend/src:/app/src
     networks:
       - ulpf-network
 

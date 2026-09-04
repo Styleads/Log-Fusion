@@ -1,0 +1,15 @@
+1756289531.123    215 10.0.0.15 TCP_MISS/200 5432 GET http://example.com/ - HIER_DIRECT/93.184.216.34 text/html
+1756289534.981    142 10.0.0.15 TCP_MISS/200 812 GET http://cdn.example.com/style.css - HIER_DIRECT/93.184.216.35 text/css
+1756289540.221     98 10.0.0.22 TCP_DENIED/403 0 GET http://malicious-torrents.example/download - HIER_NONE/- text/html
+1756289545.762    301 10.0.0.15 TCP_MISS/200 90234 GET http://images.example.com/banner.jpg - HIER_DIRECT/93.184.216.40 image/jpeg
+1756289550.114     87 10.0.0.31 TCP_DENIED/403 0 GET http://malicious-torrents.example/download2 - HIER_NONE/- text/html
+1756289551.402    120 10.0.0.31 TCP_DENIED/403 0 GET http://malicious-torrents.example/download3 - HIER_NONE/- text/html
+1756289552.700     91 10.0.0.31 TCP_DENIED/403 0 GET http://malicious-torrents.example/download4 - HIER_NONE/- text/html
+1756289553.998    110 10.0.0.31 TCP_DENIED/403 0 GET http://malicious-torrents.example/download5 - HIER_NONE/- text/html
+1756289555.310    105 10.0.0.31 TCP_DENIED/403 0 GET http://malicious-torrents.example/download6 - HIER_NONE/- text/html
+1756289560.445    189 10.0.0.44 TCP_MISS/200 2311 POST http://api.example.com/submit - HIER_DIRECT/93.184.216.60 application/json
+1756289566.873    256 10.0.0.15 TCP_HIT/200 5432 GET http://example.com/ - HIER_NONE/- text/html
+1756289571.019     76 10.0.0.50 TCP_MISS/301 0 GET http://oldsite.example.com/ - HIER_DIRECT/93.184.216.70 -
+1756289578.552    143 10.0.0.50 TCP_MISS/200 12043 GET http://newsite.example.com/ - HIER_DIRECT/93.184.216.71 text/html
+1756289583.221     65 10.0.0.22 TCP_DENIED/403 0 GET http://malicious-torrents.example/download - HIER_NONE/- text/html
+1756289590.004    412 10.0.0.15 TCP_MISS/200 331200 GET http://videos.example.com/clip.mp4 - HIER_DIRECT/93.184.216.90 video/mp4

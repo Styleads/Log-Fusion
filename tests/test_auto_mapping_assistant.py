@@ -343,8 +343,10 @@ def test_api_endpoints():
 
 def test_squid_proxy_log_auto_mapping():
     assistant = AutoMappingAssistant(enable_llm=False)
-    sample_file = Path(__file__).resolve().parent.parent / "squid_proxy_sample.log"
-    assert sample_file.exists(), "squid_proxy_sample.log must exist in workspace root"
+    sample_file = Path(__file__).resolve().parent.parent / "unkownlogs" / "squid_proxy_sample.log"
+    if not sample_file.exists():
+        sample_file = Path(__file__).resolve().parent.parent / "squid_proxy_sample.log"
+    assert sample_file.exists(), "squid_proxy_sample.log must exist in unkownlogs or workspace root"
 
     with open(sample_file, "r", encoding="utf-8") as f:
         sample_lines = [l.strip() for l in f if l.strip()]
@@ -409,10 +411,17 @@ def test_sparse_unknown_log_yields_low_confidence():
 
 
 def test_actual_squid_mapping_in_pipeline():
-    """Verify that the reference squid_proxy_actual_mapping.yaml normalizes squid_proxy_sample.log cleanly."""
+    """Verify that the reference squid proxy mapping normalizes squid_proxy_sample.log cleanly."""
     from src.engine.config_loader import MappingConfig
-    actual_yaml_path = Path(__file__).resolve().parent.parent / "squid_proxy_actual_mapping.yaml"
-    sample_path = Path(__file__).resolve().parent.parent / "squid_proxy_sample.log"
+    actual_yaml_path = Path(__file__).resolve().parent.parent / "mappings" / "squid_proxy" / "mapping.yaml"
+    if not actual_yaml_path.exists():
+        actual_yaml_path = Path(__file__).resolve().parent.parent / "unkownlogs" / "squid_proxy_ground_truth_mapping.yaml"
+    if not actual_yaml_path.exists():
+        actual_yaml_path = Path(__file__).resolve().parent.parent / "squid_proxy_actual_mapping.yaml"
+
+    sample_path = Path(__file__).resolve().parent.parent / "unkownlogs" / "squid_proxy_sample.log"
+    if not sample_path.exists():
+        sample_path = Path(__file__).resolve().parent.parent / "squid_proxy_sample.log"
 
     with open(actual_yaml_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)

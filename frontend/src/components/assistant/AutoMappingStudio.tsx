@@ -5,12 +5,13 @@ import { YamlDraftViewer } from './YamlDraftViewer';
 import { ValidationPreview } from './ValidationPreview';
 import { DraftsDrawer } from './DraftsDrawer';
 import { assistantService } from '../../services/assistantService';
+import { apiService } from '../../services/apiService';
 import { AssistantAnalysisData, DraftMappingItem } from '../../types/assistant';
 import { OCSFEvent } from '../../types/ocsf';
 import { PRESET_UNKNOWN_SAMPLES } from '../../data/presetSamples';
 
 interface AutoMappingStudioProps {
-  onEventIngested?: (event: OCSFEvent) => void;
+  onEventIngested?: (event: OCSFEvent | OCSFEvent[]) => void;
   onOpenDrilldown?: (event: OCSFEvent) => void;
 }
 
@@ -110,8 +111,16 @@ export const AutoMappingStudio: React.FC<AutoMappingStudioProps> = ({
       showToast(`✅ Approved "${slug}"! Flipped status to "reviewed" & hot-reloaded engine.`);
       await loadDrafts();
 
-      // If we have an OCSF preview event, push it to live feed
-      if (analysisResult?.ocsf_preview?.[0] && onEventIngested) {
+      // If raw logs are present, re-ingest batch with backend OpenSearch storage persistence
+      if (rawInput.trim() && onEventIngested) {
+        const lines = rawInput.split('\n').filter((l: string) => l.trim());
+        const batchEvents = await apiService.ingestBatch(lines);
+        if (batchEvents && batchEvents.length > 0) {
+          onEventIngested(batchEvents);
+        } else if (analysisResult?.ocsf_preview?.[0]) {
+          onEventIngested(analysisResult.ocsf_preview[0]);
+        }
+      } else if (analysisResult?.ocsf_preview?.[0] && onEventIngested) {
         onEventIngested(analysisResult.ocsf_preview[0]);
       }
     } catch (err) {

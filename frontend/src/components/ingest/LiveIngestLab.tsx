@@ -137,12 +137,14 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
           normalizedEvent: firstEv,
           lineage: [
             { raw_field: 'Source IP', raw_value: firstEv.src_endpoint?.ip || '—', ocsf_path: 'src_endpoint.ip', status: 'mapped' },
+            ...((firstEv as any).http_request?.url?.text ? [{ raw_field: 'URL', raw_value: (firstEv as any).http_request.url.text, ocsf_path: 'http_request.url.text', status: 'mapped' as const }] : []),
+            ...((firstEv as any).http_request?.http_method ? [{ raw_field: 'HTTP Method', raw_value: (firstEv as any).http_request.http_method, ocsf_path: 'http_request.http_method', status: 'mapped' as const }] : []),
             { raw_field: 'Source Port', raw_value: firstEv.src_endpoint?.port ?? '—', ocsf_path: 'src_endpoint.port', status: 'mapped' },
             { raw_field: 'Dest IP', raw_value: firstEv.dst_endpoint?.ip || '—', ocsf_path: 'dst_endpoint.ip', status: 'mapped' },
             { raw_field: 'Dest Port', raw_value: firstEv.dst_endpoint?.port ?? '—', ocsf_path: 'dst_endpoint.port', status: 'mapped' },
             { raw_field: 'Protocol', raw_value: firstEv.connection_info?.protocol_name || '—', ocsf_path: 'connection_info.protocol_name', status: 'mapped' },
             { raw_field: 'Action', raw_value: firstEv.activity_name || '—', ocsf_path: 'activity_name', status: 'transformed' },
-            { raw_field: 'Device Name', raw_value: firstEv.device?.name || '—', ocsf_path: 'device.name', status: 'mapped' }
+            { raw_field: 'Device Name', raw_value: firstEv.device?.vendor_name || firstEv.device?.name || '—', ocsf_path: 'device.vendor_name', status: 'mapped' }
           ],
           totalDurationMs: firstEv.processing_metadata?.parser_time_ms || 1.2
         };
@@ -153,7 +155,7 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
 
         // Push to SOC Dashboard
         onEventIngested(batchEvents);
-        showStatus(`✅ Successfully normalized ${batchEvents.length} OCSF events from ${fileName} and updated live SOC Dashboard!`);
+        showStatus(`✅ Successfully normalized ${batchEvents.length} OCSF events from ${fileName} and synced to OpenSearch database!`);
       } else {
         // Unknown format -> trigger Auto-Mapping Assistant
         const sourceLabel = fileName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, ' ') || 'Unknown Device';
@@ -176,15 +178,41 @@ export const LiveIngestLab: React.FC<LiveIngestLabProps> = ({
   };
 
   const handleApproveAssistantDraft = async (slug: string) => {
+    setIsProcessing(true);
     try {
+      const lines = rawInput.split('\n').filter((l) => l.trim());
+      const sourceLabel = fileName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, ' ') || slug;
+
+      // 1. Save draft mapping configuration to mappings/<slug>/mapping.yaml
+      if (assistantOutput?.yaml_draft) {
+        await assistantService.saveDraft(
+          assistantOutput.source_name || sourceLabel,
+          assistantOutput.yaml_draft,
+          lines
+        );
+      }
+
+      // 2. Approve draft: updates status to "reviewed" & hot-reloads backend engine pipeline
       await assistantService.approveDraft(slug);
       setApprovedSlug(slug);
-      if (assistantOutput?.ocsf_preview?.[0]) {
+
+      // 3. Re-ingest the uploaded lines through the newly activated pipeline with storage forwarding
+      const batchEvents = await apiService.ingestBatch(lines);
+
+      if (batchEvents && batchEvents.length > 0) {
+        setNormalizedBatch(batchEvents);
+        onEventIngested(batchEvents);
+        setIsUnknownFormat(false);
+        showStatus(`✅ Approved & deployed ${slug}! Successfully synced ${batchEvents.length} events to OpenSearch database.`);
+      } else if (assistantOutput?.ocsf_preview?.[0]) {
         onEventIngested(assistantOutput.ocsf_preview);
         showStatus(`✅ Approved draft mapping! Flipped status to "reviewed" & updated SOC Dashboard.`);
       }
     } catch (err) {
       console.error('Failed to approve draft:', err);
+      showStatus('⚠️ Error deploying approved mapping to pipeline.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 

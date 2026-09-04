@@ -112,8 +112,8 @@ class ApiService {
   async getEvents(): Promise<OCSFEvent[]> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const res = await fetch(`${STORAGE_API_BASE}/events/search?limit=100`, { signal: controller.signal });
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${STORAGE_API_BASE}/events/search?limit=500`, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (res.ok) {
@@ -140,9 +140,9 @@ class ApiService {
             };
           });
 
-          // Merge backend events with local memory events, avoiding duplicates by event_uid
+          // Merge backend events with local memory events, prioritizing fresh database events
           const map = new Map<string, OCSFEvent>();
-          for (const ev of [...mappedEvents, ...(this.realDataOnly ? this.localEvents.filter(e => !e.event_uid.startsWith('mock-')) : this.localEvents)]) {
+          for (const ev of [...(this.realDataOnly ? this.localEvents.filter(e => !e.event_uid.startsWith('mock-')) : this.localEvents), ...mappedEvents]) {
             if (ev && ev.event_uid) {
               map.set(ev.event_uid, ev);
             }

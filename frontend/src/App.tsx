@@ -353,6 +353,7 @@ export const App: React.FC = () => {
             <ConcentricProgressRing stats={summaryStats} />
             <VendorProjectGrid
               stats={summaryStats}
+              events={events}
               selectedVendor={filters.selectedVendor}
               onSelectVendor={(v) => handleFilterChange({ selectedVendor: v })}
             />

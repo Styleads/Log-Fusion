@@ -1,9 +1,67 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
 env/
 venv/
 .venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing & Coverage
 .pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Node & Frontend
+node_modules/
+frontend/dist/
+frontend/node_modules/
+.eslintcache
+
+# Vector store runtime databases and index files (ChromaDB)
+rag_chatbots/vectorstore/*
+!rag_chatbots/vectorstore/.gitkeep
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.bak
+
+# Local Environment Overrides
+.env.local

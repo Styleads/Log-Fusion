@@ -1,0 +1,90 @@
+# Mapping config: Squid Proxy (native access.log format)
+# ⚠️ THIS IS THE GROUND-TRUTH / REFERENCE CONFIG — hand-authored for testing.
+# Use this to grade the Auto-Mapping Assistant's guess: feed it the raw
+# sample log (squid_proxy_sample.log) as if the format were unseen, then
+# diff its generated mapping.yaml against this file.
+#
+# Format reference: Squid's native (non-Apache-style) access log.
+# Fields (whitespace-delimited, variable spacing between columns):
+#   0 timestamp.microseconds | 1 elapsed_ms | 2 client_addr
+#   3 result_code/http_status | 4 bytes | 5 method | 6 url
+#   7 rfc931 (usually "-")   | 8 peer_code/peer_host | 9 content_type
+
+source_identity:
+  vendor: "Squid"
+  product: "Squid Proxy"
+  format: "space_delimited"
+  version: "1.0"
+  status: "reviewed"
+
+detection:
+  method: "regex"
+  pattern: '^\d{10}\.\d{3}\s+\d+\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+(TCP|UDP)_\w+/\d+'
+
+parsing:
+  delimiter: "whitespace"     # collapse repeated spaces, split on any whitespace run
+  fields:
+    0: raw_timestamp
+    1: raw_elapsed_ms
+    2: raw_client_ip
+    3: raw_result_code        # e.g. TCP_MISS/200, TCP_DENIED/403
+    4: raw_bytes
+    5: raw_method
+    6: raw_url
+    7: raw_rfc931
+    8: raw_peer                # e.g. HIER_DIRECT/93.184.216.34, HIER_NONE/-
+    9: raw_content_type
+
+classification:
+  default_class_uid: 4002
+  default_class_name: "HTTP Activity"
+  rules:
+    - when: { raw_result_code_contains: "DENIED" }
+      class_uid: 4002
+      activity_id: 6
+      activity_name: "Deny"
+    - when: { raw_result_code_contains: "HIT" }
+      class_uid: 4002
+      activity_id: 1
+      activity_name: "Allow"
+    - when: { raw_result_code_contains: "MISS" }
+      class_uid: 4002
+      activity_id: 1
+      activity_name: "Allow"
+
+field_map:
+  raw_client_ip:   "src_endpoint.ip"
+  raw_url:         "http_request.url.text"
+  raw_method:      "http_request.http_method"
+  raw_bytes:       "traffic.bytes"
+  raw_content_type: "http_response.content_type"
+
+static_fields:
+  "device.vendor_name": "Squid"
+  "device.type": "Proxy"
+  "metadata.product.vendor_name": "Squid"
+  "metadata.product.name": "Squid Proxy"
+
+transforms:
+  raw_result_code:
+    type: "split_status"
+    delimiter: "/"
+    parts: ["cache_result", "http_status"]
+    target_status_field: "http_response.code"
+  raw_elapsed_ms:
+    type: "cast_int"
+    target: "duration_ms"
+
+timestamp:
+  source_field: "raw_timestamp"
+  format: "epoch_seconds_fractional"   # e.g. 1756289531.123
+  timezone: "UTC"
+
+unmapped_policy:
+  action: "bucket"
+  target: "unmapped"
+  # raw_rfc931, raw_peer land here — no clean OCSF home for hierarchy/peer info
+
+raw_preservation:
+  enabled: true
+  target_field: "raw_data"

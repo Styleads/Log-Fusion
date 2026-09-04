@@ -71,3 +71,45 @@ def test_classify_suricata_alert():
     assert res["class_name"] == "Network Detection"
     assert res["activity_name"] == "Alert Blocked"
     assert res["class_uid"] == 2001
+
+
+def test_classify_predicate_contains():
+    from src.engine.config_loader import MappingConfig
+    cfg = MappingConfig({
+        "source_identity": {"vendor": "Test", "product": "Test", "format": "json", "version": "1.0"},
+        "detection": {"method": "regex", "pattern": ".*"},
+        "parsing": {"format": "json"},
+        "classification": {
+            "default_class_uid": 4002,
+            "default_class_name": "HTTP Activity",
+            "rules": [
+                {
+                    "when": {"raw_result_code_contains": "DENIED"},
+                    "class_uid": 4002,
+                    "activity_id": 6,
+                    "activity_name": "Deny",
+                },
+                {
+                    "when": {"raw_result_code_contains": "HIT"},
+                    "class_uid": 4002,
+                    "activity_id": 1,
+                    "activity_name": "Allow",
+                }
+            ]
+        },
+        "field_map": {},
+        "static_fields": {},
+        "transforms": {},
+        "timestamp": {"source_field": "raw_time", "format": "%Y-%m-%d %H:%M:%S"},
+        "unmapped_policy": {"action": "bucket", "target": "unmapped"},
+        "raw_preservation": {"enabled": True, "target_field": "raw_data"}
+    })
+    classifier = OCSFClassifier(cfg)
+    res_deny = classifier.classify({"raw_result_code": "TCP_DENIED/403"})
+    assert res_deny["activity_name"] == "Deny"
+    assert res_deny["activity_id"] == 6
+
+    res_allow = classifier.classify({"raw_result_code": "TCP_HIT/200"})
+    assert res_allow["activity_name"] == "Allow"
+    assert res_allow["activity_id"] == 1
+

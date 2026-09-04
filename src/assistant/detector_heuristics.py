@@ -257,42 +257,62 @@ class FormatDetector:
             row_dict = {f"col_{i}": tok for i, tok in enumerate(tokens)}
             parsed_samples.append(row_dict)
 
-        # Construct a regex pattern based on first token characteristics
+        # Construct a regex pattern based on leading token characteristics
         first_line = lines[0] if lines else ""
         first_tokens = first_line.split()
         
         pattern_parts = []
-        for tok in first_tokens[:3]:
+        for tok in first_tokens[:4]:
             # Date check
-            if re.match(r'^\d{4}-\d{2}-\d{2}$', tok):
-                pattern_parts.append(r'\d{4}-\d{2}-\d{2}')
+            if re.match(r'^\d{4}[-/]\d{2}[-/]\d{2}$', tok):
+                pattern_parts.append(r'\d{4}[-/]\d{2}[-/]\d{2}')
             # Time check
-            elif re.match(r'^\d{2}:\d{2}:\d{2}$', tok):
-                pattern_parts.append(r'\d{2}:\d{2}:\d{2}')
+            elif re.match(r'^\d{2}:\d{2}:\d{2}(?:\.\d+)?$', tok):
+                pattern_parts.append(r'\d{2}:\d{2}:\d{2}(?:\.\d+)?')
+            # Epoch timestamp check (e.g. 1756289531.123 or 1756289531)
+            elif re.match(r'^\d{10}\.\d{3}$', tok):
+                pattern_parts.append(r'\d{10}\.\d{3}')
+            elif re.match(r'^\d{10}(?:\.\d+)?$', tok):
+                pattern_parts.append(r'\d{10}(?:\.\d+)?')
             # IP check
             elif re.match(r'^(?:\d{1,3}\.){3}\d{1,3}$', tok):
-                pattern_parts.append(r'(?:\d{1,3}\.){3}\d{1,3}')
+                pattern_parts.append(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
+            # Compound protocol/result codes (e.g. TCP_MISS/200, TCP_DENIED/403)
+            elif re.match(r'^(?:TCP|UDP)_[A-Za-z]+/\d+$', tok):
+                pattern_parts.append(r'(?:TCP|UDP)_\w+/\d+')
+            elif re.match(r'^[A-Za-z]+_[A-Za-z]+/\d+$', tok):
+                pattern_parts.append(r'\w+/\d+')
+            # HTTP methods
+            elif tok.upper() in ("GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "CONNECT", "PATCH", "TRACE"):
+                pattern_parts.append(r'(?:GET|POST|PUT|DELETE|HEAD|OPTIONS|CONNECT|PATCH|TRACE)')
             # Action keywords
             elif tok.upper() in ("DROP", "ALLOW", "ACCEPT", "DENY", "BLOCK", "PERMIT", "REJECT"):
                 pattern_parts.append(r'(?:DROP|ALLOW|ACCEPT|DENY|BLOCK|PERMIT|REJECT)')
             # Protocol keywords
             elif tok.upper() in ("TCP", "UDP", "ICMP", "ESP", "GRE"):
                 pattern_parts.append(r'(?:TCP|UDP|ICMP|ESP|GRE)')
+            # Generic positive integer (e.g. duration or port or byte count)
+            elif re.match(r'^\d+$', tok):
+                pattern_parts.append(r'\d+')
             else:
                 pattern_parts.append(re.escape(tok))
 
-        detection_pattern = r'^\s*'.join(pattern_parts) if pattern_parts else r'^\S+\s+\S+'
+        detection_pattern = (r'^' + r'\s+'.join(pattern_parts)) if pattern_parts else r'^\S+\s+\S+'
+
+        # If lines contain multiple consecutive spaces between tokens, use "whitespace" delimiter
+        has_variable_whitespace = any(re.search(r'\S\s{2,}\S', line) for line in lines)
+        delimiter = "whitespace" if has_variable_whitespace else " "
 
         return DetectedFormatResult(
             format_type="space_delimited",
-            delimiter=" ",
+            delimiter=delimiter,
             has_header=False,
             header_columns=None,
             detection_method="regex",
             detection_pattern=detection_pattern,
             parsed_samples=parsed_samples,
             raw_lines=lines,
-            confidence=0.75,
+            confidence=0.70,
         )
 
     def _is_header_row(self, row: List[str]) -> bool:

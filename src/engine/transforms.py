@@ -74,6 +74,22 @@ class ValueTransformer:
             else:
                 continue
 
+            if rule_type == "split_status":
+                delimiter = rule_opts.get("delimiter", "/")
+                parts_names = rule_opts.get("parts", [])
+                val_str = str(raw_val).strip()
+                tokens = val_str.split(delimiter)
+                for idx, part_name in enumerate(parts_names):
+                    if idx < len(tokens):
+                        transformed[part_name] = tokens[idx]
+                target_status = rule_opts.get("target_status_field")
+                if target_status and len(tokens) > 1:
+                    try:
+                        transformed[target_status] = int(tokens[1])
+                    except (ValueError, TypeError):
+                        transformed[target_status] = tokens[1]
+                continue
+
             new_val = self.apply_transform(rule_type, raw_val, rule_opts)
 
             # Check if this transform redirects to a specific target path
@@ -102,7 +118,7 @@ class ValueTransformer:
                     return v
             return opts.get("default", value)
 
-        elif t_type in ("integer", "int"):
+        elif t_type in ("integer", "int", "cast_int"):
             try:
                 # Clean strings like "51322" or "0x400000"
                 val_str = str(value).strip()

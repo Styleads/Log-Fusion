@@ -55,11 +55,23 @@ class TimestampParser:
 
         # 1. Try configured format string if present
         if self.format_str:
-            try:
-                # Handle %z timezone offsets like +0000 or -05:00
-                dt = datetime.strptime(cleaned_str, self.format_str)
-            except ValueError:
-                pass
+            fmt_lower = self.format_str.lower()
+            if fmt_lower in ("epoch_seconds_fractional", "epoch_seconds", "epoch"):
+                try:
+                    dt = datetime.fromtimestamp(float(cleaned_str), tz=timezone.utc)
+                except (ValueError, OSError):
+                    pass
+            elif fmt_lower in ("epoch_ms", "epoch_millis", "epoch_milliseconds"):
+                try:
+                    dt = datetime.fromtimestamp(float(cleaned_str) / 1000.0, tz=timezone.utc)
+                except (ValueError, OSError):
+                    pass
+            else:
+                try:
+                    # Handle %z timezone offsets like +0000 or -05:00
+                    dt = datetime.strptime(cleaned_str, self.format_str)
+                except ValueError:
+                    pass
 
         # 2. Try Python fromisoformat (handles ISO-8601 with offset or Z)
         if dt is None:
@@ -86,6 +98,17 @@ class TimestampParser:
                     break
                 except ValueError:
                     continue
+
+        # 4. Epoch auto-detection fallback
+        if dt is None:
+            try:
+                val_f = float(cleaned_str)
+                if 1_000_000_000 <= val_f <= 4_102_444_800:
+                    dt = datetime.fromtimestamp(val_f, tz=timezone.utc)
+                elif 1_000_000_000_000 <= val_f <= 4_102_444_800_000:
+                    dt = datetime.fromtimestamp(val_f / 1000.0, tz=timezone.utc)
+            except (ValueError, OSError):
+                pass
 
         if dt is None:
             # If unable to parse into datetime, return the original string

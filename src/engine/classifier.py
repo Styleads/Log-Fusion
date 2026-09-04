@@ -84,19 +84,41 @@ class OCSFClassifier:
         if not when:
             return False
 
-        for field_name, expected_val in when.items():
-            if field_name not in parsed_fields:
-                return False
-            actual_val = parsed_fields[field_name]
-            if actual_val is None:
-                return False
-
-            # Case-insensitive string comparison if both are strings
-            if isinstance(actual_val, str) and isinstance(expected_val, str):
-                if actual_val.strip().lower() != expected_val.strip().lower():
+        for condition_key, expected_val in when.items():
+            if condition_key.endswith("_contains"):
+                target_field = condition_key[:-9]
+                if target_field not in parsed_fields or parsed_fields[target_field] is None:
+                    return False
+                actual_val = parsed_fields[target_field]
+                if str(expected_val).lower() not in str(actual_val).lower():
+                    return False
+            elif condition_key.endswith("_startswith"):
+                target_field = condition_key[:-11]
+                if target_field not in parsed_fields or parsed_fields[target_field] is None:
+                    return False
+                actual_val = parsed_fields[target_field]
+                if not str(actual_val).lower().startswith(str(expected_val).lower()):
+                    return False
+            elif condition_key.endswith("_endswith"):
+                target_field = condition_key[:-9]
+                if target_field not in parsed_fields or parsed_fields[target_field] is None:
+                    return False
+                actual_val = parsed_fields[target_field]
+                if not str(actual_val).lower().endswith(str(expected_val).lower()):
                     return False
             else:
-                if str(actual_val).lower() != str(expected_val).lower():
+                if condition_key not in parsed_fields:
                     return False
+                actual_val = parsed_fields[condition_key]
+                if actual_val is None:
+                    return False
+
+                # Case-insensitive string comparison if both are strings
+                if isinstance(actual_val, str) and isinstance(expected_val, str):
+                    if actual_val.strip().lower() != expected_val.strip().lower():
+                        return False
+                else:
+                    if str(actual_val).lower() != str(expected_val).lower():
+                        return False
 
         return True

@@ -335,3 +335,111 @@ def test_api_endpoints():
     drafts_resp = client.get("/api/v1/assistant/drafts")
     assert drafts_resp.status_code == 200
     assert "drafts" in drafts_resp.json()
+
+
+# ==========================================
+# 8. Squid Proxy & Calibrated Confidence Tests
+# ==========================================
+
+def test_squid_proxy_log_auto_mapping():
+    assistant = AutoMappingAssistant(enable_llm=False)
+    sample_file = Path(__file__).resolve().parent.parent / "squid_proxy_sample.log"
+    assert sample_file.exists(), "squid_proxy_sample.log must exist in workspace root"
+
+    with open(sample_file, "r", encoding="utf-8") as f:
+        sample_lines = [l.strip() for l in f if l.strip()]
+
+    analysis = assistant.analyze("Squid Proxy", sample_lines)
+
+    assert analysis["detected_format"] == "space_delimited"
+    assert analysis["confidence_label"] == "high"
+    assert analysis["confidence_score"] >= 0.75
+    assert analysis["validation"]["valid"] is True
+    assert analysis["validation"]["successful_events"] == len(sample_lines)
+
+    parsed_yaml = yaml.safe_load(analysis["yaml_draft"])
+
+    # Detection pattern check: must not contain erroneous mid-pattern carets (e.g. ^\s*)
+    det_pattern = parsed_yaml["detection"]["pattern"]
+    assert r"^\s*" not in det_pattern[1:], "Pattern should not contain carets in the middle"
+    assert r"\d{10}\.\d{3}" in det_pattern
+
+    # Parsing delimiter check: should recognize variable whitespace
+    assert parsed_yaml["parsing"]["delimiter"] == "whitespace"
+
+    # Classification check: should default to HTTP Activity
+    assert parsed_yaml["classification"]["default_class_uid"] == 4002
+    assert parsed_yaml["classification"]["default_class_name"] == "HTTP Activity"
+
+    # Field map check: core HTTP fields mapped
+    field_map_targets = set(parsed_yaml["field_map"].values())
+    assert "src_endpoint.ip" in field_map_targets
+    assert "http_request.http_method" in field_map_targets
+    assert "http_request.url.text" in field_map_targets
+    assert "traffic.bytes" in field_map_targets
+    assert "http_response.content_type" in field_map_targets
+
+    # Transforms check: split_status and cast_int
+    transforms = parsed_yaml["transforms"]
+    assert any(t.get("type") == "split_status" for t in transforms.values())
+    assert any(t.get("type") == "cast_int" and t.get("target") == "duration_ms" for t in transforms.values())
+
+    # Timestamp check: epoch_seconds_fractional
+    assert parsed_yaml["timestamp"]["format"] == "epoch_seconds_fractional"
+
+    # Event verification: preview contains normalized HTTP Activity event with ISO time
+    first_event = analysis["ocsf_preview"][0]
+    assert first_event["class_uid"] == 4002
+    assert first_event["src_endpoint"]["ip"] == "10.0.0.15"
+    assert first_event["http_request"]["http_method"] == "GET"
+    assert first_event["http_request"]["url"]["text"] == "http://example.com/"
+    assert "T" in first_event["time"] and first_event["time"].endswith("Z")
+
+
+def test_sparse_unknown_log_yields_low_confidence():
+    """Verify that an unknown log with sparse/unverified telemetry strictly yields low confidence."""
+    assistant = AutoMappingAssistant(enable_llm=False)
+    sparse_lines = [
+        "foo bar 10.0.0.1 215 baz qux hello world 123",
+        "foo bar 10.0.0.2 142 baz qux hello world 124",
+    ]
+    analysis = assistant.analyze("Unknown Proprietary Log", sparse_lines)
+    assert analysis["confidence_label"] == "low"
+    assert analysis["confidence_score"] < 0.50
+
+
+def test_actual_squid_mapping_in_pipeline():
+    """Verify that the reference squid_proxy_actual_mapping.yaml normalizes squid_proxy_sample.log cleanly."""
+    from src.engine.config_loader import MappingConfig
+    actual_yaml_path = Path(__file__).resolve().parent.parent / "squid_proxy_actual_mapping.yaml"
+    sample_path = Path(__file__).resolve().parent.parent / "squid_proxy_sample.log"
+
+    with open(actual_yaml_path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    mapping_config = MappingConfig(cfg)
+    pipeline = NormalizationPipeline()
+
+    with open(sample_path, "r", encoding="utf-8") as f:
+        sample_lines = [l.strip() for l in f if l.strip()]
+
+    events = [pipeline.process_line(line, config=mapping_config) for line in sample_lines]
+    assert all(e is not None for e in events)
+
+    # Check first event
+    e0 = events[0]
+    assert e0["class_name"] == "HTTP Activity"
+    assert e0["class_uid"] == 4002
+    assert e0["activity_name"] == "Allow"
+    assert e0["src_endpoint"]["ip"] == "10.0.0.15"
+    assert e0["http_request"]["http_method"] == "GET"
+    assert e0["http_request"]["url"]["text"] == "http://example.com/"
+    assert e0["duration_ms"] == 215
+    assert "T" in e0["time"] and e0["time"].endswith("Z")
+
+    # Check denied event
+    e2 = events[2]
+    assert e2["activity_name"] == "Deny"
+    assert e2["activity_id"] == 6
+    assert e2["src_endpoint"]["ip"] == "10.0.0.22"
+

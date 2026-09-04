@@ -64,7 +64,7 @@ class YamlGenerator:
         fmt = format_result.format_type
 
         if fmt == "space_delimited":
-            parsing["delimiter"] = " "
+            parsing["delimiter"] = format_result.delimiter or " "
             parsing["skip_line_prefix"] = "#"
             fields_dict = {}
             for k, v in semantic_result.field_definitions.items():

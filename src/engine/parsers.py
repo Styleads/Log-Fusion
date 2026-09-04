@@ -33,7 +33,7 @@ class DelimitedParser(BaseParser):
         parsing = self.config.parsing
         self.delimiter = parsing.get("delimiter", ",")
         # Handle space delimiter special cases (single space or whitespace)
-        self.is_whitespace_delim = self.delimiter == " "
+        self.is_whitespace_delim = self.delimiter in (" ", "whitespace")
         self.skip_prefix = parsing.get("skip_line_prefix")
         self.quote_char = parsing.get("quote_character", '"')
         self.has_header = bool(parsing.get("header", False))
